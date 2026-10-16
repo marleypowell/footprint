@@ -5,6 +5,8 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/marleypowell/footprint/internal/doc"
 )
 
 func TestParseDiff(t *testing.T) {
@@ -89,7 +91,7 @@ func TestClassifyRefs(t *testing.T) {
 
 func mustJSON(t *testing.T, v any) string {
 	t.Helper()
-	b, err := marshal(v)
+	b, err := doc.Marshal(v)
 	if err != nil {
 		t.Fatal(err)
 	}

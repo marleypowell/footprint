@@ -26,8 +26,9 @@ type MirrorStatus struct {
 
 func (h *harness) mirrorStatusPath() string { return filepath.Join(h.cache, "mirror_status.json") }
 
-// mirror bare-clones (or incrementally fetches) every non-empty repo: branches, tags and
-// refs/pull/*/head, so commits from squash-merged PRs with deleted branches stay reachable.
+// mirror bare-clones (or incrementally fetches) every non-empty repo: branches, tags and the
+// code host's change-request heads (as refs/pull/<n>/head), so commits from squash-merged PRs
+// with deleted branches stay reachable.
 func (h *harness) mirror(ctx context.Context) error {
 	all, err := h.loadRepos()
 	if err != nil {
@@ -84,6 +85,7 @@ func (h *harness) mirrorOne(ctx context.Context, r Repo) MirrorStatus {
 	path := h.mirrorPath(r.Name)
 	start := time.Now()
 	status := MirrorStatus{Name: r.Name}
+	remote := h.tools.Host.Remote(r)
 	err := func() error {
 		if !fileExists(filepath.Join(path, "HEAD")) {
 			if err := os.RemoveAll(path); err != nil { // half-initialised by an interrupted run
@@ -94,12 +96,12 @@ func (h *harness) mirrorOne(ctx context.Context, r Repo) MirrorStatus {
 			}
 			setup := [][]string{
 				{"init", "--bare", "--quiet"},
-				{"remote", "add", "origin", "https://github.com/" + r.FullName + ".git"},
+				{"remote", "add", "origin", remote.URL},
 				{"config", "remote.origin.fetch", "+refs/heads/*:refs/heads/*"},
 				{"config", "--add", "remote.origin.fetch", "+refs/tags/*:refs/tags/*"},
 			}
-			if h.cfg.Mirror.FetchPullRefs {
-				setup = append(setup, []string{"config", "--add", "remote.origin.fetch", "+refs/pull/*/head:refs/pull/*/head"})
+			if h.cfg.Mirror.FetchPullRefs && remote.PullRequestRefspec != "" {
+				setup = append(setup, []string{"config", "--add", "remote.origin.fetch", remote.PullRequestRefspec})
 			}
 			setup = append(setup, []string{"config", "gc.auto", "0"})
 			for _, args := range setup {
@@ -108,10 +110,10 @@ func (h *harness) mirrorOne(ctx context.Context, r Repo) MirrorStatus {
 				}
 			}
 		}
-		if _, err := git(ctx, path, nil, "fetch", "--prune", "--quiet", "origin"); err != nil {
+		if _, err := runGit(ctx, gitEnv(remote.GitConfig...), path, nil, "fetch", "--prune", "--quiet", "origin"); err != nil {
 			return err
 		}
-		if b := r.defaultBranch(); b != "" {
+		if b := r.DefaultBranchName(); b != "" {
 			if _, err := git(ctx, path, nil, "symbolic-ref", "HEAD", "refs/heads/"+b); err != nil {
 				return err
 			}

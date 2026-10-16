@@ -43,7 +43,7 @@ type Commit struct {
 	OnDefaultBranch               bool         `json:"on_default_branch"`
 	PRNumbersInMessage            []int        `json:"pr_numbers_in_message"`
 	AzureDevOpsPRNumbersInMessage []int        `json:"azure_devops_pr_numbers_in_message"`
-	JiraKeys                      []string     `json:"jira_keys"`
+	IssueKeys                     []string     `json:"issue_keys"`
 	Stats                         *CommitStats `json:"stats"`
 	Files                         []FileChange `json:"files"`
 	FilesTruncated                bool         `json:"files_truncated"`
@@ -54,7 +54,7 @@ type Commit struct {
 	ContainingRefCounts           RefCounts    `json:"containing_ref_counts"`
 }
 
-// MatchedBy records, per role, how the user was matched ("email", "name", or "github_pr").
+// MatchedBy records, per role, how the user was matched ("email", "name", or "authored_pr").
 type MatchedBy struct {
 	Author    string `json:"author,omitempty"`
 	Committer string `json:"committer,omitempty"`
@@ -111,9 +111,6 @@ func (h *harness) commits(ctx context.Context) error {
 		return err
 	}
 	repos = h.selected(repos)
-	if len(h.jira.keys) == 0 {
-		logf("commits: no Jira project keys configured (config jira.*), so jira_keys will be empty")
-	}
 	var done, total, active atomic.Int64
 	err = forEach(ctx, 6, repos, func(ctx context.Context, _ int, r Repo) error {
 		rows, err := h.extractCommits(ctx, r)
@@ -151,8 +148,8 @@ func (h *harness) extractCommits(ctx context.Context, repo Repo) ([]Commit, erro
 		return nil, err
 	}
 
-	// commits in, or landing, the user's own PRs (Claude/Copilot agent commits, colleagues' pushes)
-	prs, err := readJSONL[PullRequest](filepath.Join(h.repoDir(repo.Name), "prs.jsonl"))
+	// commits in, or landing, the user's own PRs (agent commits, colleagues' pushes)
+	prs, err := readJSONL[PullRequestRecord](filepath.Join(h.repoDir(repo.Name), "prs.jsonl"))
 	if err != nil {
 		return nil, err
 	}
@@ -200,9 +197,9 @@ func (h *harness) extractCommits(ctx context.Context, repo Repo) ([]Commit, erro
 	if err != nil {
 		return nil, err
 	}
-	defaultRef := "refs/heads/" + repo.defaultBranch()
+	defaultRef := "refs/heads/" + repo.DefaultBranchName()
 	onDefault := map[string]bool{}
-	if repo.defaultBranch() != "" && hasRef(ctx, path, defaultRef) {
+	if repo.DefaultBranchName() != "" && hasRef(ctx, path, defaultRef) {
 		out, err := git(ctx, path, nil, "rev-list", defaultRef)
 		if err != nil {
 			return nil, err
@@ -226,7 +223,7 @@ func (h *harness) extractCommits(ctx context.Context, repo Repo) ([]Commit, erro
 			}
 		}
 		if prSHAs[sha] {
-			matched.PRAuthor = "github_pr"
+			matched.PRAuthor = "authored_pr"
 		}
 		if len(matched.roles()) == 0 { // the message mentioned the user for some other reason
 			continue
@@ -246,7 +243,7 @@ func (h *harness) extractCommits(ctx context.Context, repo Repo) ([]Commit, erro
 		rows = append(rows, Commit{
 			Repo:                          repo.Name,
 			SHA:                           sha,
-			URL:                           "https://github.com/" + repo.FullName + "/commit/" + sha,
+			URL:                           h.tools.Host.CommitURL(repo, sha),
 			Roles:                         matched.roles(),
 			MatchedBy:                     matched,
 			InUserPRs:                     sortedInts(inMyPRs[sha]),
@@ -260,9 +257,9 @@ func (h *harness) extractCommits(ctx context.Context, repo Repo) ([]Commit, erro
 			Parents:                       d.parents,
 			IsMerge:                       isMerge,
 			OnDefaultBranch:               onDefault[sha],
-			PRNumbersInMessage:            prNumbersInMessage(d.message),
+			PRNumbersInMessage:            orEmpty(h.tools.Host.PullRequestNumbers(d.message)),
 			AzureDevOpsPRNumbersInMessage: adoPRNumbersInMessage(d.message),
-			JiraKeys:                      h.jira.find(d.message),
+			IssueKeys:                     h.tools.Tracker.Keys(d.message),
 			Stats:                         stats,
 			Files:                         d.files[:min(len(d.files), maxFilesPerCommit)],
 			FilesTruncated:                len(d.files) > maxFilesPerCommit,
@@ -294,7 +291,7 @@ func (h *harness) extractCommits(ctx context.Context, repo Repo) ([]Commit, erro
 		}
 		refs := classifyRefs(containment[r.SHA])
 		r.Branches, r.PullRequestRefs, r.Tags, r.ContainingRefCounts = refs.branches, refs.prs, refs.tags, refs.counts
-		r.JiraKeys = mergeSorted(r.JiraKeys, h.jira.find(strings.Join(refs.branches, " ")))
+		r.IssueKeys = mergeSorted(r.IssueKeys, h.tools.Tracker.Keys(strings.Join(refs.branches, " ")))
 	}
 	sort.Slice(rows, func(i, j int) bool {
 		ti, tj := parseTime(rows[i].Author.Date), parseTime(rows[j].Author.Date)
@@ -446,7 +443,7 @@ func patchIDs(ctx context.Context, path string, shas []string) (map[string]strin
 	logCmd := exec.CommandContext(ctx, "git", "--git-dir", path, "log", "--no-walk=unsorted", "--stdin", "-p",
 		"--format=commit %H", "--diff-merges=off", "--no-color", "--no-ext-diff", "--no-textconv")
 	idCmd := exec.CommandContext(ctx, "git", "--git-dir", path, "patch-id", "--stable")
-	logCmd.Env, idCmd.Env = gitEnv, gitEnv
+	logCmd.Env, idCmd.Env = baseGitEnv, baseGitEnv
 	logCmd.Stdin = strings.NewReader(strings.Join(shas, "\n"))
 	pipe, err := logCmd.StdoutPipe()
 	if err != nil {

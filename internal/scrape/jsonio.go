@@ -13,17 +13,6 @@ import (
 	"strings"
 )
 
-// marshal encodes v as compact JSON without HTML escaping: the output is data, not web content.
-func marshal(v any) ([]byte, error) {
-	var b bytes.Buffer
-	enc := json.NewEncoder(&b)
-	enc.SetEscapeHTML(false)
-	if err := enc.Encode(v); err != nil {
-		return nil, err
-	}
-	return bytes.TrimRight(b.Bytes(), "\n"), nil
-}
-
 // writeFileAtomic writes via a temp file and rename, so readers never see a half-written file.
 func writeFileAtomic(path string, data []byte) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
@@ -111,78 +100,4 @@ func writeUnder(base, relpath string, data []byte) error {
 		return err
 	}
 	return os.WriteFile(path, data, 0o644)
-}
-
-// orderedMap is a JSON object that keeps insertion order (encoding/json sorts map keys), so YAML
-// documents and ranked counts keep their order in the output.
-type orderedMap struct {
-	keys   []string
-	values map[string]any
-}
-
-func newOrderedMap() *orderedMap { return &orderedMap{values: map[string]any{}} }
-
-func (m *orderedMap) set(key string, value any) {
-	if _, ok := m.values[key]; !ok {
-		m.keys = append(m.keys, key)
-	}
-	m.values[key] = value
-}
-
-func (m *orderedMap) MarshalJSON() ([]byte, error) {
-	var b bytes.Buffer
-	b.WriteByte('{')
-	for i, k := range m.keys {
-		if i > 0 {
-			b.WriteByte(',')
-		}
-		kb, err := marshal(k)
-		if err != nil {
-			return nil, err
-		}
-		vb, err := marshal(m.values[k])
-		if err != nil {
-			return nil, err
-		}
-		b.Write(kb)
-		b.WriteByte(':')
-		b.Write(vb)
-	}
-	b.WriteByte('}')
-	return b.Bytes(), nil
-}
-
-// field returns obj[key] for a decoded JSON or YAML object, and nil for anything else, so
-// lookups can chain through missing or mistyped values.
-func field(obj any, key string) any {
-	switch m := obj.(type) {
-	case *orderedMap:
-		if m != nil {
-			return m.values[key]
-		}
-	case map[string]any:
-		return m[key]
-	}
-	return nil
-}
-
-func isObject(v any) bool {
-	switch m := v.(type) {
-	case *orderedMap:
-		return m != nil
-	case map[string]any:
-		return true
-	}
-	return false
-}
-
-func asString(v any) string {
-	switch s := v.(type) {
-	case nil:
-		return ""
-	case string:
-		return s
-	default:
-		return fmt.Sprint(s)
-	}
 }

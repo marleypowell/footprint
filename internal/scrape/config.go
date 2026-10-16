@@ -1,6 +1,7 @@
 package scrape
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -9,18 +10,45 @@ import (
 
 // Config is the personal config file (config.json), written by init from config.example.json.
 type Config struct {
-	Org             string         `json:"org"`
-	GitHubLogin     string         `json:"github_login"`
-	GitHubUserID    int64          `json:"github_user_id"`
-	Identity        IdentityConfig `json:"identity"`
-	Mirror          MirrorConfig   `json:"mirror"`
-	SearchStartYear int            `json:"search_start_year"`
-	// CatalogHubRepos hold Backstage entities for other repos: entities found there are tied to a
-	// repo through annotations or links rather than by where the file lives.
-	CatalogHubRepos []string   `json:"catalog_hub_repos"`
-	Jira            JiraConfig `json:"jira"`
+	Org      string         `json:"org"`   // the org (GitHub) or group (GitLab) to collect from
+	Login    string         `json:"login"` // the user's account on the code host
+	Identity IdentityConfig `json:"identity"`
+	// Each tool section names its adapter ("kind") and holds that adapter's settings.
+	CodeHost     Tool         `json:"code_host"`
+	Catalog      Tool         `json:"catalog"`
+	IssueTracker Tool         `json:"issue_tracker"`
+	Mirror       MirrorConfig `json:"mirror"`
 
-	dir string // relative paths inside the config resolve against its directory
+	dir string
+}
+
+// Tool is a config section selecting an adapter. Settings is the whole section, kind included,
+// for the adapter to read its own fields from.
+type Tool struct {
+	Kind     string
+	Settings json.RawMessage
+}
+
+func (t *Tool) UnmarshalJSON(b []byte) error {
+	var head struct {
+		Kind string `json:"kind"`
+	}
+	if err := json.Unmarshal(b, &head); err != nil {
+		return err
+	}
+	var compact bytes.Buffer
+	if err := json.Compact(&compact, b); err != nil {
+		return err
+	}
+	t.Kind, t.Settings = head.Kind, compact.Bytes()
+	return nil
+}
+
+func (t Tool) MarshalJSON() ([]byte, error) {
+	if len(t.Settings) > 0 {
+		return t.Settings, nil
+	}
+	return json.Marshal(map[string]string{"kind": t.Kind})
 }
 
 // IdentityConfig says who counts as the user.
@@ -35,33 +63,28 @@ type MirrorConfig struct {
 	FetchPullRefs bool `json:"fetch_pull_refs"`
 }
 
-// JiraConfig lists real Jira project keys, so that jira_keys skips look-alikes such as UTF-8.
-type JiraConfig struct {
-	ProjectsFile     *string  `json:"projects_file"` // JSON list of {"key": ...}; null for none
-	ExtraProjectKeys []string `json:"extra_project_keys"`
-}
-
 // LoadConfig reads a config file, filling in defaults for missing settings.
 func LoadConfig(path string) (*Config, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
 	}
-	cfg := Config{Mirror: MirrorConfig{Parallelism: 6, FetchPullRefs: true}, SearchStartYear: 2008}
+	cfg := Config{Mirror: MirrorConfig{Parallelism: 6, FetchPullRefs: true}}
 	if err := json.Unmarshal(data, &cfg); err != nil {
 		return nil, fmt.Errorf("%s: %w", path, err)
 	}
-	if cfg.Org == "" || cfg.GitHubLogin == "" {
-		return nil, fmt.Errorf("%s: org and github_login are required", path)
+	for _, required := range []struct{ name, value string }{
+		{"org", cfg.Org}, {"login", cfg.Login}, {"code_host.kind", cfg.CodeHost.Kind},
+		{"catalog.kind", cfg.Catalog.Kind}, {"issue_tracker.kind", cfg.IssueTracker.Kind},
+	} {
+		if required.value == "" {
+			return nil, fmt.Errorf("%s: %s is missing (regenerate with `footprint init --force --org <org>`)", path, required.name)
+		}
 	}
 	cfg.Mirror.Parallelism = max(cfg.Mirror.Parallelism, 1)
 	cfg.dir = filepath.Dir(path)
 	return &cfg, nil
 }
 
-func (c *Config) resolve(path string) string {
-	if filepath.IsAbs(path) {
-		return path
-	}
-	return filepath.Join(c.dir, path)
-}
+// Dir is the directory relative paths inside the config resolve against.
+func (c *Config) Dir() string { return c.dir }

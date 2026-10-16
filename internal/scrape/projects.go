@@ -2,7 +2,6 @@ package scrape
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"io/fs"
 	"os"
@@ -14,6 +13,9 @@ import (
 	"strings"
 
 	"github.com/marleypowell/footprint"
+	"github.com/marleypowell/footprint/internal/catalog"
+	"github.com/marleypowell/footprint/internal/doc"
+	"github.com/marleypowell/footprint/internal/tracker"
 )
 
 var (
@@ -29,14 +31,14 @@ const (
 
 // Project is <data>/repos/<repo>/project.json: what the repo is, plus the user's activity in it.
 type Project struct {
-	Name      string           `json:"name"`
-	URL       string           `json:"url"`
-	GitHub    Repo             `json:"github"`
-	History   *History         `json:"history"`
-	Backstage ProjectBackstage `json:"backstage"`
-	Docs      []Doc            `json:"docs"`
-	TreeTop   []string         `json:"tree_top"`
-	Activity  Activity         `json:"activity"`
+	Name     string         `json:"name"`
+	URL      string         `json:"url"`
+	CodeHost Repo           `json:"code_host"`
+	History  *History       `json:"history"`
+	Catalog  ProjectCatalog `json:"catalog"`
+	Docs     []Doc          `json:"docs"`
+	TreeTop  []string       `json:"tree_top"`
+	Activity Activity       `json:"activity"`
 }
 
 type History struct {
@@ -49,27 +51,11 @@ type History struct {
 	MirroredAt      *string `json:"mirrored_at"`
 }
 
-type ProjectBackstage struct {
-	Entities []ProjectEntity `json:"entities"`
-	// Context holds the entities those point at (system, domain, owner, parent), resolved
-	// transitively; null when referenced but not defined in any YAML.
-	Context map[string]*ContextEntity `json:"context"`
-}
-
-type ProjectEntity struct {
-	Ref             string          `json:"ref"`
-	Kind            any             `json:"kind"`
-	FoundInRepo     string          `json:"found_in_repo"`
-	Path            string          `json:"path"`
-	SourceRepoBasis *string         `json:"source_repo_basis"`
-	Entity          json.RawMessage `json:"entity"`
-}
-
-type ContextEntity struct {
-	Kind        any             `json:"kind"`
-	FoundInRepo string          `json:"found_in_repo"`
-	Path        string          `json:"path"`
-	Entity      json.RawMessage `json:"entity"`
+type ProjectCatalog struct {
+	Entities []catalog.Entity `json:"entities"`
+	// Context holds the entities those are part of (system, domain, owner, parent), resolved
+	// transitively; null when referenced but not defined in any descriptor.
+	Context map[string]*catalog.Entity `json:"context"`
 }
 
 type Doc struct {
@@ -82,7 +68,7 @@ type Doc struct {
 // Activity is the headline counts for a repo, from its commits.jsonl and prs.jsonl.
 type Activity struct {
 	CommitsTotal            int         `json:"commits_total"`
-	CommitsByRoles          *orderedMap `json:"commits_by_roles"` // most common first
+	CommitsByRoles          *doc.Object `json:"commits_by_roles"` // most common first
 	Authored                int         `json:"authored"`
 	AuthoredOnDefaultBranch int         `json:"authored_on_default_branch"`
 	AuthoredOnlyOnOtherRefs int         `json:"authored_only_on_other_refs"`
@@ -91,7 +77,7 @@ type Activity struct {
 	AuthoredDeletions       int         `json:"authored_deletions"`
 	FirstAuthoredAt         *string     `json:"first_authored_at"`
 	LastAuthoredAt          *string     `json:"last_authored_at"`
-	JiraKeys                int         `json:"jira_keys"`
+	IssueKeys               int         `json:"issue_keys"`
 	PRsAuthored             int         `json:"prs_authored"`
 	PRsMerged               int         `json:"prs_merged"`
 	FirstPRAt               *string     `json:"first_pr_at"`
@@ -102,11 +88,19 @@ type Activity struct {
 type Index struct {
 	GeneratedAt string         `json:"generated_at"`
 	Org         string         `json:"org"`
-	GitHubLogin string         `json:"github_login"`
+	Login       string         `json:"login"`
+	Sources     Sources        `json:"sources"`
 	Identity    IdentityConfig `json:"identity"`
 	Schema      string         `json:"schema"`
 	Totals      IndexTotals    `json:"totals"`
 	Repos       []IndexRepo    `json:"repos"`
+}
+
+// Sources names the adapter that produced each part of the dataset.
+type Sources struct {
+	CodeHost     string `json:"code_host"`
+	Catalog      string `json:"catalog"`
+	IssueTracker string `json:"issue_tracker"`
 }
 
 type IndexTotals struct {
@@ -125,19 +119,20 @@ type IndexRepo struct {
 	Dir               string            `json:"dir"`
 	Files             map[string]string `json:"files"`
 	Archived          bool              `json:"archived"`
-	GitHubDescription *string           `json:"github_description"`
-	Backstage         []IndexEntity     `json:"backstage"`
+	Description       *string           `json:"description"`
+	Catalog           []IndexEntity     `json:"catalog"`
 	Docs              []string          `json:"docs"`
 	FirstCommitInRepo *string           `json:"first_commit_in_repo"`
-	GitHubCreatedAt   string            `json:"github_created_at"`
+	CreatedAt         string            `json:"created_at"`
 	Activity
 }
 
 type IndexEntity struct {
-	Ref         string `json:"ref"`
-	Title       any    `json:"title"`
-	Description any    `json:"description"`
-	Type        any    `json:"type"`
+	Ref         string  `json:"ref"`
+	Category    string  `json:"category"`
+	Title       *string `json:"title"`
+	Description *string `json:"description"`
+	Type        *string `json:"type"`
 }
 
 // projects writes each active repo's project.json and docs, then index.json and the schema doc.
@@ -150,28 +145,20 @@ func (h *harness) projects(ctx context.Context) error {
 	for _, r := range repos {
 		byName[r.Name] = r
 	}
-	stored, err := readJSONL[Entity](filepath.Join(h.raw, "backstage", "entities.jsonl"))
+	stored, err := readJSONL[catalog.Entity](filepath.Join(h.raw, "catalog", "entities.jsonl"))
 	if err != nil {
 		return err
 	}
-	var entities []Entity
-	docs := map[*Entity]any{} // each entity decoded once, for lookups
-	byRef := map[string]*Entity{}
-	for i := range stored {
-		if stored[i].IsTemplateSkeleton {
-			continue
+	var entities []catalog.Entity
+	for _, e := range stored {
+		if !e.IsTemplateSkeleton {
+			entities = append(entities, e)
 		}
-		entities = append(entities, stored[i])
 	}
+	byRef := map[string]*catalog.Entity{}
 	for i := range entities {
-		e := &entities[i]
-		var doc any
-		if err := json.Unmarshal(e.Entity, &doc); err != nil {
-			return err
-		}
-		docs[e] = doc
-		if _, seen := byRef[e.Ref]; !seen {
-			byRef[e.Ref] = e
+		if _, seen := byRef[entities[i].Ref]; !seen {
+			byRef[entities[i].Ref] = &entities[i]
 		}
 	}
 	statuses := map[string]MirrorStatus{}
@@ -179,12 +166,12 @@ func (h *harness) projects(ctx context.Context) error {
 		return err
 	}
 
-	entries, err := os.ReadDir(filepath.Join(h.raw, "repos"))
+	dirEntries, err := os.ReadDir(filepath.Join(h.raw, "repos"))
 	if err != nil && !errors.Is(err, fs.ErrNotExist) {
 		return err
 	}
 	var index []IndexRepo
-	for _, entry := range entries {
+	for _, entry := range dirEntries {
 		name, dir := entry.Name(), filepath.Join(h.raw, "repos", entry.Name())
 		hasCommits, hasPRs := fileExists(filepath.Join(dir, "commits.jsonl")), fileExists(filepath.Join(dir, "prs.jsonl"))
 		if !hasCommits && !hasPRs {
@@ -201,15 +188,14 @@ func (h *harness) projects(ctx context.Context) error {
 			continue
 		}
 		own := ownEntities(entities, name)
-		related := resolveContext(own, byRef, docs)
 		catalogDirs := map[string]bool{}
 		for _, e := range own {
 			if e.FoundInRepo == name {
 				catalogDirs[parentDir(e.Path)] = true
 			}
 		}
-		project := Project{Name: name, URL: repo.URL, GitHub: repo, Docs: []Doc{}, TreeTop: []string{},
-			Backstage: ProjectBackstage{Entities: []ProjectEntity{}, Context: related}}
+		project := Project{Name: name, URL: repo.URL, CodeHost: repo, Docs: []Doc{}, TreeTop: []string{},
+			Catalog: ProjectCatalog{Entities: []catalog.Entity{}, Context: relatedEntities(own, byRef)}}
 		if h.isMirrored(name) {
 			if project.Docs, project.TreeTop, err = h.projectDocs(ctx, repo, catalogDirs); err != nil {
 				return err
@@ -222,25 +208,21 @@ func (h *harness) projects(ctx context.Context) error {
 		if err != nil {
 			return err
 		}
-		prs, err := readJSONL[PullRequest](filepath.Join(dir, "prs.jsonl"))
+		prs, err := readJSONL[PullRequestRecord](filepath.Join(dir, "prs.jsonl"))
 		if err != nil {
 			return err
 		}
 		project.Activity = summarizeActivity(commits, prs)
 		item := IndexRepo{
 			Name: name, URL: repo.URL, Dir: "repos/" + name, Files: map[string]string{}, Archived: repo.IsArchived,
-			GitHubDescription: repo.Description, Backstage: []IndexEntity{}, Docs: []string{},
-			GitHubCreatedAt: repo.CreatedAt, Activity: project.Activity,
+			Description: repo.Description, Catalog: []IndexEntity{}, Docs: []string{},
+			CreatedAt: repo.CreatedAt, Activity: project.Activity,
 		}
 		for _, e := range own {
-			project.Backstage.Entities = append(project.Backstage.Entities, ProjectEntity{
-				Ref: e.Ref, Kind: e.Kind, FoundInRepo: e.FoundInRepo, Path: e.Path, SourceRepoBasis: e.SourceRepoBasis, Entity: e.Entity,
-			})
-			if slices.Contains([]string{"Component", "System", "API", "Resource"}, asString(e.Kind)) {
-				meta := field(docs[e], "metadata")
-				item.Backstage = append(item.Backstage, IndexEntity{
-					Ref: e.Ref, Title: field(meta, "title"), Description: field(meta, "description"), Type: field(field(docs[e], "spec"), "type"),
-				})
+			project.Catalog.Entities = append(project.Catalog.Entities, *e)
+			if catalog.DescribesSoftware(e.Category) {
+				item.Catalog = append(item.Catalog, IndexEntity{Ref: e.Ref, Category: e.Category, Title: e.Title,
+					Description: e.Description, Type: e.Type})
 			}
 		}
 		if hasCommits {
@@ -279,14 +261,15 @@ func (h *harness) projects(ctx context.Context) error {
 		}
 	}
 	err = writeJSON(filepath.Join(h.raw, "index.json"), Index{
-		GeneratedAt: nowISO(), Org: h.cfg.Org, GitHubLogin: h.cfg.GitHubLogin, Identity: h.cfg.Identity,
-		Schema: "README.md", Totals: totals, Repos: orEmpty(index),
+		GeneratedAt: nowISO(), Org: h.cfg.Org, Login: h.cfg.Login,
+		Sources:  Sources{CodeHost: h.cfg.CodeHost.Kind, Catalog: h.cfg.Catalog.Kind, IssueTracker: h.cfg.IssueTracker.Kind},
+		Identity: h.cfg.Identity, Schema: "README.md", Totals: totals, Repos: orEmpty(index),
 	})
 	if err != nil {
 		return err
 	}
-	if len(h.jira.projects) > 0 {
-		if err := writeJSON(filepath.Join(h.raw, "org", "jira_projects.json"), h.jira.projects); err != nil {
+	if projects := h.tools.Tracker.Projects(); len(projects) > 0 {
+		if err := writeJSON(filepath.Join(h.raw, "org", "issue_projects.json"), orEmpty[tracker.Project](projects)); err != nil {
 			return err
 		}
 	}
@@ -297,16 +280,18 @@ func (h *harness) projects(ctx context.Context) error {
 	return nil
 }
 
-// ownEntities are the entities describing repo: systems first, then entities nearer the root.
-func ownEntities(entities []Entity, repo string) []*Entity {
-	rank := map[string]int{"System": 0, "Component": 1, "API": 2, "Resource": 3}
-	kindRank := func(e *Entity) int {
-		if r, ok := rank[asString(e.Kind)]; ok {
+// categoryRank orders a repo's entities: systems, then components, APIs and resources, then the rest.
+var categoryRank = map[string]int{catalog.System: 0, catalog.Component: 1, catalog.API: 2, catalog.Resource: 3}
+
+// ownEntities are the entities describing repo, systems first, then entities nearer the root.
+func ownEntities(entities []catalog.Entity, repo string) []*catalog.Entity {
+	rank := func(e *catalog.Entity) int {
+		if r, ok := categoryRank[e.Category]; ok {
 			return r
 		}
-		return 9
+		return len(categoryRank)
 	}
-	var own []*Entity
+	var own []*catalog.Entity
 	for i := range entities {
 		if deref(entities[i].SourceRepo) == repo {
 			own = append(own, &entities[i])
@@ -314,8 +299,8 @@ func ownEntities(entities []Entity, repo string) []*Entity {
 	}
 	sort.SliceStable(own, func(i, j int) bool {
 		a, b := own[i], own[j]
-		if ka, kb := kindRank(a), kindRank(b); ka != kb {
-			return ka < kb
+		if ra, rb := rank(a), rank(b); ra != rb {
+			return ra < rb
 		}
 		if da, db := strings.Count(a.Path, "/"), strings.Count(b.Path, "/"); da != db {
 			return da < db
@@ -328,14 +313,14 @@ func ownEntities(entities []Entity, repo string) []*Entity {
 	return own
 }
 
-// resolveContext follows what the repo's entities are part of (system -> domain, owner, parent).
-func resolveContext(own []*Entity, byRef map[string]*Entity, docs map[*Entity]any) map[string]*ContextEntity {
-	related := map[string]*ContextEntity{}
+// relatedEntities follows what a repo's entities are part of (system -> domain, owner, parent).
+func relatedEntities(own []*catalog.Entity, byRef map[string]*catalog.Entity) map[string]*catalog.Entity {
+	related := map[string]*catalog.Entity{}
 	ownRefs := map[string]bool{}
 	var queue []string
 	for _, e := range own {
 		ownRefs[e.Ref] = true
-		queue = append(queue, specRefs(docs[e])...)
+		queue = append(queue, e.PartOf...)
 	}
 	for len(queue) > 0 {
 		ref := queue[len(queue)-1]
@@ -344,39 +329,12 @@ func resolveContext(own []*Entity, byRef map[string]*Entity, docs map[*Entity]an
 			continue
 		}
 		target := byRef[ref]
-		if target == nil {
-			related[ref] = nil
-			continue
+		related[ref] = target // nil: referenced but not defined anywhere
+		if target != nil {
+			queue = append(queue, target.PartOf...)
 		}
-		related[ref] = &ContextEntity{Kind: target.Kind, FoundInRepo: target.FoundInRepo, Path: target.Path, Entity: target.Entity}
-		queue = append(queue, specRefs(docs[target])...)
 	}
 	return related
-}
-
-// specRefs are the entity refs that say what an entity is part of. Backstage refs are
-// [kind:][namespace/]name, with the kind defaulting by field.
-func specRefs(entity any) []string {
-	spec := field(entity, "spec")
-	var refs []string
-	for _, f := range []struct{ field, kind string }{
-		{"system", "system"}, {"domain", "domain"}, {"owner", "group"}, {"subcomponentOf", "component"}, {"parent", "group"},
-	} {
-		value, ok := field(spec, f.field).(string)
-		if !ok || value == "" {
-			continue
-		}
-		kind, rest := f.kind, value
-		if i := strings.LastIndex(value, ":"); i >= 0 {
-			kind, rest = value[:i], value[i+1:]
-		}
-		namespace, name := "default", rest
-		if i := strings.LastIndex(rest, "/"); i >= 0 {
-			namespace, name = rest[:i], rest[i+1:]
-		}
-		refs = append(refs, strings.ToLower(kind)+":"+strings.ToLower(namespace)+"/"+strings.ToLower(name))
-	}
-	return refs
 }
 
 func parentDir(p string) string {
@@ -387,11 +345,11 @@ func parentDir(p string) string {
 }
 
 // projectDocs saves the repo's docs (root README, CLAUDE.md, AGENTS.md, docs index, package.json,
-// and READMEs next to catalog-info files) and lists its layout to depth 2.
+// and READMEs next to catalog descriptors) and lists its layout to depth 2.
 func (h *harness) projectDocs(ctx context.Context, repo Repo, catalogDirs map[string]bool) ([]Doc, []string, error) {
-	path, ref := h.mirrorPath(repo.Name), "refs/heads/"+repo.defaultBranch()
+	path, ref := h.mirrorPath(repo.Name), "refs/heads/"+repo.DefaultBranchName()
 	docs, top := []Doc{}, []string{}
-	if repo.defaultBranch() == "" || !hasRef(ctx, path, ref) {
+	if repo.DefaultBranchName() == "" || !hasRef(ctx, path, ref) {
 		return docs, top, nil
 	}
 	tree, err := lsTree(ctx, path, ref)
@@ -404,8 +362,7 @@ func (h *harness) projectDocs(ctx context.Context, repo Repo, catalogDirs map[st
 	}
 	for _, file := range tree {
 		dir := parentDir(file)
-		base := file[len(dir):]
-		base = strings.TrimPrefix(base, "/")
+		base := strings.TrimPrefix(file[len(dir):], "/")
 		if !rootDocsRE.MatchString(file) && !(dir != "" && catalogDirs[dir] && readmeRE.MatchString(base)) {
 			continue
 		}
@@ -461,11 +418,11 @@ func (h *harness) historyInfo(ctx context.Context, repo Repo, status MirrorStatu
 	return hist, nil
 }
 
-func summarizeActivity(commits []Commit, prs []PullRequest) Activity {
-	a := Activity{CommitsTotal: len(commits), CommitsByRoles: newOrderedMap(), PRsAuthored: len(prs)}
+func summarizeActivity(commits []Commit, prs []PullRequestRecord) Activity {
+	a := Activity{CommitsTotal: len(commits), CommitsByRoles: doc.NewObject(), PRsAuthored: len(prs)}
 	roleCounts := map[string]int{}
 	var roleOrder []string
-	jira := map[string]bool{}
+	issues := map[string]bool{}
 	var firstAuthored, lastAuthored string
 	for _, c := range commits {
 		key := strings.Join(c.Roles, "+")
@@ -473,8 +430,8 @@ func summarizeActivity(commits []Commit, prs []PullRequest) Activity {
 			roleOrder = append(roleOrder, key)
 		}
 		roleCounts[key]++
-		for _, k := range c.JiraKeys {
-			jira[k] = true
+		for _, k := range c.IssueKeys {
+			issues[k] = true
 		}
 		if !slices.Contains(c.Roles, "author") {
 			continue
@@ -501,13 +458,13 @@ func summarizeActivity(commits []Commit, prs []PullRequest) Activity {
 	}
 	sort.SliceStable(roleOrder, func(i, j int) bool { return roleCounts[roleOrder[i]] > roleCounts[roleOrder[j]] })
 	for _, k := range roleOrder {
-		a.CommitsByRoles.set(k, roleCounts[k])
+		a.CommitsByRoles.Set(k, roleCounts[k])
 	}
 	a.FirstAuthoredAt, a.LastAuthoredAt = isoUTC(firstAuthored), isoUTC(lastAuthored)
 	var firstPR, lastPR string
 	for _, p := range prs {
-		for _, k := range p.JiraKeys {
-			jira[k] = true
+		for _, k := range p.IssueKeys {
+			issues[k] = true
 		}
 		if deref(p.MergedAt) != "" {
 			a.PRsMerged++
@@ -523,6 +480,6 @@ func summarizeActivity(commits []Commit, prs []PullRequest) Activity {
 	if firstPR != "" {
 		a.FirstPRAt, a.LastPRAt = &firstPR, &lastPR
 	}
-	a.JiraKeys = len(jira)
+	a.IssueKeys = len(issues)
 	return a
 }

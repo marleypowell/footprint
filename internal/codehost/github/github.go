@@ -1,0 +1,127 @@
+// Package github is the code host adapter for GitHub: GraphQL and REST calls made with the gh
+// CLI's token, and GitHub's URL, ref and merge-message conventions.
+package github
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"regexp"
+	"sort"
+	"strconv"
+	"strings"
+	"sync"
+
+	"github.com/marleypowell/footprint/internal/codehost"
+)
+
+// Host is one GitHub organisation. It takes no settings yet (config: {"kind": "github"}).
+type Host struct {
+	org string
+
+	once   sync.Once
+	api    *client
+	apiErr error
+}
+
+var _ codehost.Host = (*Host)(nil)
+
+// New returns the adapter for org. settings is the code_host config section; it is checked to
+// be an object but has no fields yet.
+func New(org string, settings json.RawMessage) (*Host, error) {
+	if org == "" {
+		return nil, errors.New("github: org is required")
+	}
+	if len(settings) > 0 {
+		var s map[string]any
+		if err := json.Unmarshal(settings, &s); err != nil {
+			return nil, fmt.Errorf("github settings: %w", err)
+		}
+	}
+	return &Host{org: org}, nil
+}
+
+// client returns the API client, created on first use so the conventions need no token.
+func (h *Host) client(ctx context.Context) (*client, error) {
+	h.once.Do(func() { h.api, h.apiErr = newClient(ctx) })
+	return h.api, h.apiErr
+}
+
+func (h *Host) Remote(repo codehost.Repo) codehost.Remote {
+	return codehost.Remote{
+		URL:                "https://github.com/" + repo.FullName + ".git",
+		PullRequestRefspec: "+refs/pull/*/head:refs/pull/*/head",
+		GitConfig: []codehost.GitSetting{
+			// Drop whatever helper the user's git config names (possibly a stale path), then use gh.
+			{Key: "credential.https://github.com.helper", Value: ""},
+			{Key: "credential.https://github.com.helper", Value: "!gh auth git-credential"},
+		},
+	}
+}
+
+func (h *Host) CommitURL(repo codehost.Repo, sha string) string { return repo.URL + "/commit/" + sha }
+
+var pullRequestInMessage = []*regexp.Regexp{
+	regexp.MustCompile(`(?m)\(#(\d+)\)\s*$`),               // squash merge: "Title (#123)"
+	regexp.MustCompile(`(?m)^Merge pull request #(\d+)\b`), // merge commit
+}
+
+func (h *Host) PullRequestNumbers(message string) []int {
+	seen := map[int]bool{}
+	for _, re := range pullRequestInMessage {
+		for _, m := range re.FindAllStringSubmatch(message, -1) {
+			if n, err := strconv.Atoi(m[1]); err == nil {
+				seen[n] = true
+			}
+		}
+	}
+	numbers := make([]int, 0, len(seen))
+	for n := range seen {
+		numbers = append(numbers, n)
+	}
+	sort.Ints(numbers)
+	return numbers
+}
+
+var (
+	repoURLRE  = regexp.MustCompile(`(?i)github\.com[/:]([A-Za-z0-9_.-]+)/([A-Za-z0-9_.-]+)`)
+	repoSlugRE = regexp.MustCompile(`^([A-Za-z0-9_.-]+)/([A-Za-z0-9_.-]+)$`)
+)
+
+func (h *Host) RepoPath(ref string) (string, bool) {
+	ref = strings.TrimSpace(ref)
+	if m := repoURLRE.FindStringSubmatch(ref); m != nil {
+		return m[1] + "/" + strings.TrimSuffix(m[2], ".git"), true
+	}
+	if m := repoSlugRE.FindStringSubmatch(ref); m != nil {
+		return m[1] + "/" + m[2], true
+	}
+	return "", false
+}
+
+func (h *Host) Account(ctx context.Context) (codehost.Account, error) {
+	api, err := h.client(ctx)
+	if err != nil {
+		return codehost.Account{}, err
+	}
+	var me struct {
+		Login     string  `json:"login"`
+		ID        int64   `json:"id"`
+		Name      *string `json:"name"`
+		CreatedAt string  `json:"created_at"`
+	}
+	if err := api.get(ctx, "/user", nil, &me); err != nil {
+		return codehost.Account{}, err
+	}
+	account := codehost.Account{Login: me.Login, ID: me.ID, CreatedAt: me.CreatedAt}
+	if me.Name != nil {
+		account.Name = *me.Name
+	}
+	login := strings.ToLower(me.Login)
+	account.NoReplyEmails = []string{ // web edits, with and (older accounts) without the id prefix
+		fmt.Sprintf("%d+%s@users.noreply.github.com", me.ID, login),
+		login + "@users.noreply.github.com",
+	}
+	return account, nil
+}

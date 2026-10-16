@@ -8,9 +8,9 @@ import (
 func testIdentity(t *testing.T) *identity {
 	t.Helper()
 	id, err := newIdentity(&Config{
-		GitHubLogin: "jdoe",
+		Login: "jdoe",
 		Identity: IdentityConfig{
-			Emails:           []string{"jane.doe@example.com", "jane@personal.example"},
+			Emails:           []string{"jane.doe@example.com", "jane@personal.example", "12345+jdoe@users.noreply.github.com"},
 			Names:            []string{"Jane Doe", "jdoe"},
 			DiscoveryPattern: "jane|doe",
 		},
@@ -25,9 +25,8 @@ func TestIdentityMatch(t *testing.T) {
 	id := testIdentity(t)
 	tests := []struct{ name, email, want string }{
 		{"Jane", "Jane.Doe@Example.com", "email"},
-		{"jdoe", "12345+jdoe@users.noreply.github.com", "email"},
-		{"jdoe", "jdoe@users.noreply.github.com", "email"},
-		{"someone", "12345+jdoex@users.noreply.github.com", ""},
+		{"jdoe", "12345+JDOE@users.noreply.github.com", "email"},
+		{"someone", "jdoe@users.noreply.github.com", ""}, // noreply forms count only when configured
 		{"jane doe", "laptop@localhost", "name"},
 		{"Jane", "laptop@localhost", ""},
 		{"Other Person", "other@example.com", ""},

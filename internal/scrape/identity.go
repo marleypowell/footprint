@@ -10,7 +10,6 @@ import (
 type identity struct {
 	emails    map[string]bool
 	names     map[string]bool
-	noreply   *regexp.Regexp
 	discovery *regexp.Regexp
 	pattern   string // the discovery pattern as written, for `git log -E --grep`
 }
@@ -23,10 +22,8 @@ func newIdentity(cfg *Config) (*identity, error) {
 	for _, n := range cfg.Identity.Names {
 		id.names[strings.ToLower(strings.TrimSpace(n))] = true
 	}
-	// GitHub's noreply address, with or without the numeric id prefix.
-	id.noreply = regexp.MustCompile(`(?i)^(\d+\+)?` + regexp.QuoteMeta(cfg.GitHubLogin) + `@users\.noreply\.github\.com$`)
 	if id.pattern == "" {
-		id.pattern = regexp.QuoteMeta(cfg.GitHubLogin)
+		id.pattern = regexp.QuoteMeta(cfg.Login)
 	}
 	discovery, err := regexp.Compile("(?i)" + id.pattern)
 	if err != nil {
@@ -38,8 +35,7 @@ func newIdentity(cfg *Config) (*identity, error) {
 
 // match says how a (name, email) pair matches the configured identity: "email", "name", or "".
 func (id *identity) match(name, email string) string {
-	email = strings.ToLower(strings.TrimSpace(email))
-	if id.emails[email] || id.noreply.MatchString(email) {
+	if id.emails[strings.ToLower(strings.TrimSpace(email))] {
 		return "email"
 	}
 	if id.names[strings.ToLower(strings.TrimSpace(name))] {

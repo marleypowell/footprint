@@ -2,22 +2,17 @@ package scrape
 
 import (
 	"context"
-	"fmt"
 	"os"
 	"sort"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/marleypowell/footprint/internal/logx"
 )
 
-var logMu sync.Mutex
-
 // logf prints a timestamped progress line to stderr.
-func logf(format string, args ...any) {
-	logMu.Lock()
-	defer logMu.Unlock()
-	fmt.Fprintf(os.Stderr, "[%s] %s\n", time.Now().Format("15:04:05"), fmt.Sprintf(format, args...))
-}
+func logf(format string, args ...any) { logx.Printf(format, args...) }
 
 // forEach calls fn for every item with at most n calls in flight. The first error cancels the
 // context passed to the calls still running, stops new ones starting, and is returned.
@@ -47,17 +42,6 @@ func forEach[T any](ctx context.Context, n int, items []T, fn func(ctx context.C
 	return context.Cause(ctx)
 }
 
-func sleep(ctx context.Context, d time.Duration) error {
-	t := time.NewTimer(d)
-	defer t.Stop()
-	select {
-	case <-ctx.Done():
-		return ctx.Err()
-	case <-t.C:
-		return nil
-	}
-}
-
 // oneLine collapses whitespace runs (e.g. in an HTML error page) so a message fits one log line.
 func oneLine(s string) string { return strings.Join(strings.Fields(s), " ") }
 
@@ -77,11 +61,9 @@ func fileExists(path string) bool {
 // datasets were written with.
 const isoLayout = "2006-01-02T15:04:05-07:00"
 
-const dateLayout = "2006-01-02"
-
 func nowISO() string { return time.Now().UTC().Format(isoLayout) }
 
-// parseTime reads the ISO 8601 timestamps git (%aI) and GitHub emit; unparseable input is zero.
+// parseTime reads the ISO 8601 timestamps git (%aI) and code hosts emit; unparseable input is zero.
 func parseTime(ts string) time.Time {
 	t, _ := time.Parse(time.RFC3339, ts)
 	return t
@@ -120,22 +102,4 @@ func deref[T any](p *T) T {
 		return zero
 	}
 	return *p
-}
-
-func firstLine(s string) string {
-	line, _, _ := strings.Cut(s, "\n")
-	return strings.TrimRight(line, "\r")
-}
-
-// tomorrow is the exclusive-enough upper bound for GitHub search date ranges.
-func tomorrow() time.Time {
-	now := time.Now()
-	return time.Date(now.Year(), now.Month(), now.Day()+1, 0, 0, 0, 0, time.UTC)
-}
-
-// splitDays halves a date range for search slicing.
-func splitDays(lo, hi time.Time) (time.Time, time.Time) {
-	days := int(hi.Sub(lo).Hours() / 24)
-	mid := lo.AddDate(0, 0, days/2)
-	return mid, mid.AddDate(0, 0, 1)
 }

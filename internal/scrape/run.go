@@ -1,17 +1,21 @@
-// Package scrape collects raw data about one person's work across a GitHub org: their commits on
-// every ref, the pull requests they authored, and what each repo is. Every stage is idempotent and
-// overwrites only its own output; the output contract is docs/data-schema.md.
+// Package scrape collects raw data about one person's work across an org: their commits on every
+// ref, the pull requests they authored, and what each repo is. It owns the git mirrors and the
+// output; the code host, catalog and issue tracker are adapters behind the codehost, catalog and
+// tracker interfaces. Every stage is idempotent and overwrites only its own output; the output
+// contract is docs/data-schema.md.
 package scrape
 
 import (
 	"context"
 	"errors"
 	"fmt"
-	"io/fs"
 	"path/filepath"
 	"slices"
 	"strings"
-	"sync"
+
+	"github.com/marleypowell/footprint/internal/catalog"
+	"github.com/marleypowell/footprint/internal/codehost"
+	"github.com/marleypowell/footprint/internal/tracker"
 )
 
 // Options are the command-line settings. Relative paths resolve against the working directory.
@@ -21,36 +25,36 @@ type Options struct {
 	CacheDir   string
 	Only       string // comma-separated repo names, for the mirror and commits stages
 	Org        string // init only
+	CodeHost   string // init only: the code host adapter's kind
 	Force      bool   // init only
+}
+
+// Tools are the adapters for one run.
+type Tools struct {
+	Host    codehost.Host
+	Catalog catalog.Catalog
+	Tracker tracker.Tracker
 }
 
 // StageOrder is the order `all` runs the stages in. commits reads prs (for the pr-author role).
 var StageOrder = []string{"inventory", "mirror", "identities", "prs", "commits", "catalog", "projects", "verify"}
 
-// Run runs init on its own, or the named stages in order ("all" expands to StageOrder).
-func Run(ctx context.Context, opts Options, stages []string) error {
-	if slices.Contains(stages, "init") {
-		if len(stages) > 1 {
-			return errors.New("run init on its own, review the config it writes, then run the stages")
-		}
-		return runInit(ctx, opts)
+// Stages expands "all" and checks the names, before anything runs.
+func Stages(names []string) ([]string, error) {
+	if slices.Contains(names, "all") {
+		return StageOrder, nil
 	}
-	if slices.Contains(stages, "all") {
-		stages = StageOrder
-	}
-	for _, name := range stages {
+	for _, name := range names {
 		if !slices.Contains(StageOrder, name) {
-			return fmt.Errorf("unknown stage %q (want init, all, or one of: %s)", name, strings.Join(StageOrder, ", "))
+			return nil, fmt.Errorf("unknown stage %q (want init, all, or one of: %s)", name, strings.Join(StageOrder, ", "))
 		}
 	}
-	cfg, err := LoadConfig(opts.ConfigPath)
-	if errors.Is(err, fs.ErrNotExist) {
-		return fmt.Errorf("%s not found: run `footprint init --org <github-org>` first", opts.ConfigPath)
-	}
-	if err != nil {
-		return err
-	}
-	h, err := newHarness(cfg, opts)
+	return names, nil
+}
+
+// Run runs the stages in order.
+func Run(ctx context.Context, opts Options, cfg *Config, tools Tools, stages []string) error {
+	h, err := newHarness(cfg, opts, tools)
 	if err != nil {
 		return err
 	}
@@ -77,36 +81,22 @@ func Run(ctx context.Context, opts Options, stages []string) error {
 type harness struct {
 	cfg     *Config
 	opts    Options
+	tools   Tools
 	raw     string // output directory
 	cache   string
 	mirrors string
 	id      *identity
-	jira    *jiraMatcher
-
-	ghOnce sync.Once
-	gh     *githubClient
-	ghErr  error
 }
 
-func newHarness(cfg *Config, opts Options) (*harness, error) {
+func newHarness(cfg *Config, opts Options, tools Tools) (*harness, error) {
 	id, err := newIdentity(cfg)
 	if err != nil {
 		return nil, err
 	}
-	jira, err := loadJira(cfg)
-	if err != nil {
-		return nil, err
-	}
 	return &harness{
-		cfg: cfg, opts: opts, raw: opts.DataDir, cache: opts.CacheDir,
-		mirrors: filepath.Join(opts.CacheDir, "mirrors"), id: id, jira: jira,
+		cfg: cfg, opts: opts, tools: tools, raw: opts.DataDir, cache: opts.CacheDir,
+		mirrors: filepath.Join(opts.CacheDir, "mirrors"), id: id,
 	}, nil
-}
-
-// github returns the API client, created on first use so local-only stages need no token.
-func (h *harness) github(ctx context.Context) (*githubClient, error) {
-	h.ghOnce.Do(func() { h.gh, h.ghErr = newGitHubClient(ctx) })
-	return h.gh, h.ghErr
 }
 
 func (h *harness) mirrorPath(name string) string { return filepath.Join(h.mirrors, name+".git") }

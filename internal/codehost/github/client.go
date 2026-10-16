@@ -1,4 +1,4 @@
-package scrape
+package github
 
 import (
 	"bytes"
@@ -13,22 +13,24 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/marleypowell/footprint/internal/logx"
 )
 
 const (
-	githubAPI   = "https://api.github.com"
+	apiURL      = "https://api.github.com"
 	maxAttempts = 6
 	// searchPause keeps the REST search API under its 30 requests/minute limit.
 	searchPause = 2100 * time.Millisecond
 )
 
-// githubClient calls the GitHub API with GH_TOKEN, GITHUB_TOKEN, or the gh CLI's token.
-type githubClient struct {
+// client calls the GitHub API with GH_TOKEN, GITHUB_TOKEN, or the gh CLI's token.
+type client struct {
 	http  *http.Client
 	token string
 }
 
-func newGitHubClient(ctx context.Context) (*githubClient, error) {
+func newClient(ctx context.Context) (*client, error) {
 	token := os.Getenv("GH_TOKEN")
 	if token == "" {
 		token = os.Getenv("GITHUB_TOKEN")
@@ -40,17 +42,17 @@ func newGitHubClient(ctx context.Context) (*githubClient, error) {
 		}
 		token = strings.TrimSpace(string(out))
 	}
-	return &githubClient{http: &http.Client{Timeout: 5 * time.Minute}, token: token}, nil
+	return &client{http: &http.Client{Timeout: 5 * time.Minute}, token: token}, nil
 }
 
 // request sends an API request, retrying network errors, server errors and rate limits.
-func (c *githubClient) request(ctx context.Context, method, path string, body []byte) ([]byte, error) {
+func (c *client) request(ctx context.Context, method, path string, body []byte) ([]byte, error) {
 	for attempt := 1; ; attempt++ {
 		data, wait, err := c.try(ctx, method, path, body, attempt)
 		if err == nil || wait == 0 || attempt == maxAttempts {
 			return data, err
 		}
-		logf("github: %v; retrying in %s", err, wait)
+		logx.Printf("github: %v; retrying in %s", err, wait)
 		if err := sleep(ctx, wait); err != nil {
 			return nil, err
 		}
@@ -58,12 +60,12 @@ func (c *githubClient) request(ctx context.Context, method, path string, body []
 }
 
 // try makes one attempt. A non-zero wait means the failure is transient and worth retrying.
-func (c *githubClient) try(ctx context.Context, method, path string, body []byte, attempt int) ([]byte, time.Duration, error) {
+func (c *client) try(ctx context.Context, method, path string, body []byte, attempt int) ([]byte, time.Duration, error) {
 	var reader io.Reader
 	if body != nil {
 		reader = bytes.NewReader(body)
 	}
-	req, err := http.NewRequestWithContext(ctx, method, githubAPI+path, reader)
+	req, err := http.NewRequestWithContext(ctx, method, apiURL+path, reader)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -118,7 +120,7 @@ func backoff(attempt int) time.Duration {
 	return min(time.Duration(attempt)*time.Minute, 5*time.Minute)
 }
 
-func (c *githubClient) get(ctx context.Context, path string, params url.Values, out any) error {
+func (c *client) get(ctx context.Context, path string, params url.Values, out any) error {
 	if len(params) > 0 {
 		path += "?" + params.Encode()
 	}
@@ -136,7 +138,7 @@ type graphQLError struct {
 
 // graphql runs a query and decodes its data into out. A response carrying data alongside errors
 // (one inaccessible field, say) is logged and used, as the gh CLI does.
-func (c *githubClient) graphql(ctx context.Context, query string, vars map[string]any, out any) error {
+func (c *client) graphql(ctx context.Context, query string, vars map[string]any, out any) error {
 	body, err := json.Marshal(map[string]any{"query": query, "variables": vars})
 	if err != nil {
 		return err
@@ -155,7 +157,7 @@ func (c *githubClient) graphql(ctx context.Context, query string, vars map[strin
 		}
 		if len(resp.Errors) > 0 {
 			if transientGraphQL(resp.Errors) && attempt < maxAttempts {
-				logf("github: graphql: %s; retrying in %s", resp.Errors[0].Message, backoff(attempt))
+				logx.Printf("github: graphql: %s; retrying in %s", resp.Errors[0].Message, backoff(attempt))
 				if err := sleep(ctx, backoff(attempt)); err != nil {
 					return err
 				}
@@ -165,7 +167,7 @@ func (c *githubClient) graphql(ctx context.Context, query string, vars map[strin
 				return fmt.Errorf("graphql: %s", resp.Errors[0].Message)
 			}
 			msg, _ := json.Marshal(resp.Errors)
-			logf("graphql errors: %s", truncate(string(msg), 500))
+			logx.Printf("github: graphql errors: %s", truncate(string(msg), 500))
 		}
 		return json.Unmarshal(resp.Data, out)
 	}
@@ -182,32 +184,38 @@ func transientGraphQL(errs []graphQLError) bool {
 	return false
 }
 
-// commitSearch is a page of REST commit search results.
-type commitSearch struct {
-	TotalCount int `json:"total_count"`
-	Items      []struct {
-		SHA        string `json:"sha"`
-		Repository struct {
-			Name string `json:"name"`
-		} `json:"repository"`
-		Commit struct {
-			Author struct {
-				Name  string `json:"name"`
-				Email string `json:"email"`
-				Date  string `json:"date"`
-			} `json:"author"`
-			Message string `json:"message"`
-		} `json:"commit"`
-	} `json:"items"`
+func sleep(ctx context.Context, d time.Duration) error {
+	t := time.NewTimer(d)
+	defer t.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-t.C:
+		return nil
+	}
 }
 
-func (c *githubClient) searchCommits(ctx context.Context, params url.Values) (*commitSearch, error) {
-	if err := sleep(ctx, searchPause); err != nil {
-		return nil, err
+func truncate(s string, n int) string {
+	if len(s) <= n {
+		return s
 	}
-	var page commitSearch
-	if err := c.get(ctx, "/search/commits", params, &page); err != nil {
-		return nil, err
-	}
-	return &page, nil
+	return s[:n]
+}
+
+// oneLine collapses whitespace runs (e.g. in an HTML error page) so a message fits one log line.
+func oneLine(s string) string { return strings.Join(strings.Fields(s), " ") }
+
+const dateLayout = "2006-01-02"
+
+// tomorrow is the upper bound for search date ranges.
+func tomorrow() time.Time {
+	now := time.Now()
+	return time.Date(now.Year(), now.Month(), now.Day()+1, 0, 0, 0, 0, time.UTC)
+}
+
+// splitDays halves a date range for search slicing.
+func splitDays(lo, hi time.Time) (time.Time, time.Time) {
+	days := int(hi.Sub(lo).Hours() / 24)
+	mid := lo.AddDate(0, 0, days/2)
+	return mid, mid.AddDate(0, 0, 1)
 }
