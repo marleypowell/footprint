@@ -1,0 +1,23 @@
+{
+  "org": "acme",
+  "github_login": "your-github-login",
+  "github_user_id": 0,
+  "identity": {
+    "emails": [
+      "first.last@example.com",
+      "12345678+your-github-login@users.noreply.github.com"
+    ],
+    "names": ["First Last", "your-github-login"],
+    "discovery_pattern": "first|last|your-github-login"
+  },
+  "mirror": {
+    "parallelism": 6,
+    "fetch_pull_refs": true
+  },
+  "search_start_year": 2019,
+  "catalog_hub_repos": ["backstage-entities", "service-catalog"],
+  "jira": {
+    "projects_file": "jira_projects.json",
+    "extra_project_keys": ["TK", "DEV"]
+  }
+}

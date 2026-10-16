@@ -1,0 +1,32 @@
+[
+  {
+    "key": "ENG",
+    "name": "Engineering",
+    "projectTypeKey": "software",
+    "archived": false
+  },
+  {
+    "key": "LEG",
+    "name": "Legacy",
+    "projectTypeKey": "software",
+    "archived": true
+  },
+  {
+    "key": "OPS",
+    "name": "Operations",
+    "projectTypeKey": "service_desk",
+    "archived": false
+  },
+  {
+    "key": "PAY",
+    "name": "Payments",
+    "projectTypeKey": "software",
+    "archived": false
+  },
+  {
+    "key": "SHOP",
+    "name": "Shop",
+    "projectTypeKey": "software",
+    "archived": false
+  }
+]

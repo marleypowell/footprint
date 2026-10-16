@@ -1,0 +1,10 @@
+# personal: the identity config and everything collected about that person (private-repo content)
+harness/config.json
+data/
+
+# bare git mirrors of every repo in the org (several GB for a large org) and run logs
+cache/
+
+__pycache__/
+*.py[cod]
+*.tmp
