@@ -310,17 +310,37 @@ type named struct {
 	Name string `json:"name"`
 }
 
+// issueType is an issue's type. hierarchyLevel is the type's level in the site's issue hierarchy
+// (-1 sub-task, 0 standard, 1 epic, and above).
+type issueType struct {
+	Name           string `json:"name"`
+	Subtask        bool   `json:"subtask"`
+	HierarchyLevel *int   `json:"hierarchyLevel"`
+}
+
+// level is the type's tracker level: the site's hierarchyLevel, or failing that the sub-task flag.
+func (t issueType) level() int {
+	switch {
+	case t.HierarchyLevel != nil:
+		return *t.HierarchyLevel
+	case t.Subtask:
+		return tracker.SubtaskLevel
+	}
+	return tracker.StandardLevel
+}
+
 type rawRef struct {
 	Key    string `json:"key"`
 	Fields struct {
-		Summary   string `json:"summary"`
-		Status    named  `json:"status"`
-		IssueType named  `json:"issuetype"`
+		Summary   string    `json:"summary"`
+		Status    named     `json:"status"`
+		IssueType issueType `json:"issuetype"`
 	} `json:"fields"`
 }
 
 func (r *rawRef) ref() tracker.IssueRef {
-	return tracker.IssueRef{Key: r.Key, Summary: r.Fields.Summary, Type: r.Fields.IssueType.Name, Status: r.Fields.Status.Name}
+	t := r.Fields.IssueType
+	return tracker.IssueRef{Key: r.Key, Summary: r.Fields.Summary, Type: t.Name, Level: t.level(), Status: r.Fields.Status.Name}
 }
 
 func convert(site string, raw rawIssue, ids fieldIDs, histories []rawHistory, comments []rawComment, worklogs []rawWorklog) tracker.Issue {
@@ -335,6 +355,7 @@ func convert(site string, raw rawIssue, ids fieldIDs, histories []rawHistory, co
 		Key  string `json:"key"`
 		Name string `json:"name"`
 	}](f, "project")
+	kind := field[issueType](f, "issuetype")
 	category := statusCategories[status.StatusCategory.Key]
 	if category == "" {
 		category = status.StatusCategory.Key
@@ -342,7 +363,7 @@ func convert(site string, raw rawIssue, ids fieldIDs, histories []rawHistory, co
 	issue := tracker.Issue{
 		Key: raw.Key, ID: raw.ID, URL: site + "/browse/" + raw.Key, PreviousKeys: []string{},
 		Project: tracker.ProjectRef{Key: project.Key, Name: project.Name},
-		Type:    field[named](f, "issuetype").Name, Summary: field[string](f, "summary"),
+		Type:    kind.Name, Level: kind.level(), Summary: field[string](f, "summary"),
 		Description: richText(f["description"]), Status: status.Name, StatusCategory: category,
 		Resolution: namePtr(field[*named](f, "resolution")), Priority: namePtr(field[*named](f, "priority")),
 		Labels: nonNil(field[[]string](f, "labels")), Components: names(field[[]named](f, "components")),

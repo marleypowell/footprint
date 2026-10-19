@@ -67,6 +67,7 @@ type Issue struct {
 	PreviousKeys   []string     `json:"previous_keys"`
 	Project        ProjectRef   `json:"project"`
 	Type           string       `json:"type"`
+	Level          int          `json:"level"` // the type's place in the hierarchy: SubtaskLevel, StandardLevel, EpicLevel or above
 	Summary        string       `json:"summary"`
 	Description    string       `json:"description"`
 	Status         string       `json:"status"`
@@ -108,11 +109,19 @@ type User struct {
 	Name string `json:"name"`
 }
 
+// Hierarchy levels of issue types (Issue.Level). Levels above EpicLevel group epics (initiatives).
+const (
+	SubtaskLevel  = -1 // a sub-task: part of the issue above it
+	StandardLevel = 0  // a story, task or bug
+	EpicLevel     = 1  // an epic (Linear: a project): a group of standard issues
+)
+
 // IssueRef is another issue, as one issue refers to it.
 type IssueRef struct {
 	Key     string `json:"key"`
 	Summary string `json:"summary"`
 	Type    string `json:"type"`
+	Level   int    `json:"level"` // as Issue.Level
 	Status  string `json:"status"`
 }
 

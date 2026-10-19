@@ -27,14 +27,14 @@ func fakeJira(t *testing.T) *httptest.Server {
 	me, other := userJSON("u-me", "Jane Doe"), userJSON("u-2", "Other Person")
 	issue1 := `{"id":"1001","key":"ENG-1","fields":{
 	  "summary":"Speed up search","description":` + adfDoc + `,
-	  "issuetype":{"name":"Story","iconUrl":"https://x/i.png"},
+	  "issuetype":{"name":"Story","iconUrl":"https://x/i.png","subtask":false,"hierarchyLevel":0},
 	  "project":{"key":"ENG","name":"Engineering","self":"https://x/p"},
 	  "status":{"name":"In Progress","statusCategory":{"key":"indeterminate","name":"In Progress"}},
 	  "resolution":null,"priority":{"name":"High"},"labels":["backend"],"components":[{"name":"api"}],
 	  "fixVersions":[{"name":"1.0"}],"assignee":` + me + `,"reporter":` + other + `,"creator":` + other + `,
 	  "created":"2024-01-02T10:00:00.000+0000","updated":"2024-01-05T09:30:00.000+0100","resolutiondate":null,"duedate":"2024-02-01",
-	  "parent":{"key":"ENG-0","fields":{"summary":"Search epic","status":{"name":"Done"},"issuetype":{"name":"Epic"}}},
-	  "subtasks":[],
+	  "parent":{"key":"ENG-0","fields":{"summary":"Search epic","status":{"name":"Done"},"issuetype":{"name":"Epic","hierarchyLevel":1}}},
+	  "subtasks":[{"key":"ENG-3","fields":{"summary":"Index it","status":{"name":"Done"},"issuetype":{"name":"Sub-task","subtask":true}}}],
 	  "issuelinks":[{"type":{"name":"Blocks","inward":"is blocked by","outward":"blocks"},
 	    "outwardIssue":{"key":"ENG-2","fields":{"summary":"Ship it","status":{"name":"To Do"},"issuetype":{"name":"Task"}}}}],
 	  "attachment":[{"id":"a1","filename":"trace.txt","size":12,"mimeType":"text/plain","author":` + me + `,
@@ -199,7 +199,9 @@ func TestIssues(t *testing.T) {
 		EndAt: ptr("2024-01-14T17:00:00+00:00"), CompletedAt: ptr("2024-01-15T10:00:00+00:00")}})
 	check("estimate", *i.Estimate, 3.0)
 	check("team", *i.Team, "Otters")
-	check("parent", *i.Parent, tracker.IssueRef{Key: "ENG-0", Summary: "Search epic", Type: "Epic", Status: "Done"})
+	check("level (the site's hierarchy)", i.Level, tracker.StandardLevel)
+	check("parent", *i.Parent, tracker.IssueRef{Key: "ENG-0", Summary: "Search epic", Type: "Epic", Level: tracker.EpicLevel, Status: "Done"})
+	check("sub-tasks (level from the sub-task flag)", i.Subtasks, []tracker.IssueRef{{Key: "ENG-3", Summary: "Index it", Type: "Sub-task", Level: tracker.SubtaskLevel, Status: "Done"}})
 	check("links", i.Links, []tracker.IssueLink{{Relation: "blocks", IssueRef: tracker.IssueRef{Key: "ENG-2", Summary: "Ship it", Type: "Task", Status: "To Do"}}})
 	check("people", []tracker.User{*i.Assignee, *i.Reporter, *i.Creator}, []tracker.User{{ID: "u-me", Name: "Jane Doe"}, {ID: "u-2", Name: "Other Person"}, {ID: "u-2", Name: "Other Person"}})
 	check("times", []string{i.CreatedAt, i.UpdatedAt, *i.DueDate}, []string{"2024-01-02T10:00:00+00:00", "2024-01-05T08:30:00+00:00", "2024-02-01"})

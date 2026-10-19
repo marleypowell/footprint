@@ -165,10 +165,11 @@ and branch names still use them, and `issue_keys` keeps them as written.
 | `roles` | subset of `assignee`, `reporter`, `creator`, `commenter`, `editor`, `worklogger`, `referenced`: how the user is involved (below) |
 | `referenced_by` | `{commits: [{repo, sha}], prs: [{repo, number}]}`: where the user's git work names the issue, under any of its keys (joins to `commits.jsonl` and `prs.jsonl`) |
 | `project`, `type`, `summary`, `description` | what it is; `project` is `{key, name}` |
+| `level` | the type's place in the tracker's hierarchy: `-1` a sub-task, `0` a standard issue (story, task, bug), `1` an epic (Linear: a project), `2` and above the levels over epics (initiatives) |
 | `status`, `status_category`, `resolution`, `resolved_at` | where it got to; `status_category` is `todo`, `in_progress` or `done` |
 | `priority`, `labels`, `components`, `fix_versions` | metadata |
 | `sprints`, `estimate`, `team` | planning: sprints (Linear: cycles) as `{name, state, start_at, end_at, completed_at, goal}`, oldest first (future sprints have no dates); story points; the owning team |
-| `parent`, `subtasks`, `links` | related issues as `{key, summary, type, status}`; a link's `relation` reads from this issue ("blocks", "is blocked by") |
+| `parent`, `subtasks`, `links` | related issues as `{key, summary, type, level, status}`; a link's `relation` reads from this issue ("blocks", "is blocked by") |
 | `assignee`, `reporter`, `creator` | `{id, name}`; `id` is the tracker account |
 | `created_at`, `updated_at`, `due_date` | dates |
 | `comments` | every comment, oldest first: `{id, author, created_at, updated_at, body, by_user}` |
