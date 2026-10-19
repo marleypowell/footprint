@@ -6,9 +6,9 @@ project is (service catalog entities, READMEs, CLAUDE.md, code host metadata), t
 assigned or that your commits and PRs name (with comments, history and worklogs), and the wiki pages
 you created or edited.
 
-This is the collection phase only. The output is raw JSON so that a separate aggregation phase
-(a CV, a promotion case, a performance review, ...) can decide what counts.
-[`docs/data-schema.md`](docs/data-schema.md) documents the output and the caveats aggregation has
+Collection writes raw JSON, and a separate aggregation phase decides what counts and makes something
+of it (a CV, a performance review, a promotion case, ...): see [Using the data](#using-the-data).
+[`docs/data-schema.md`](docs/data-schema.md) documents the raw output and the caveats aggregation has
 to handle.
 
 The code host, service catalog, issue tracker and wiki are swappable: today the adapters are GitHub,
@@ -167,6 +167,39 @@ and `TestPipeline` runs every stage through them. The Jira and Confluence adapte
 
 After a config fix, re-run `commits projects verify issues`.
 
+## Using the data
+
+An agent (Claude, or another) makes documents and answers from the data, in steps with a boundary
+where judgement starts. Code decides what counts; the agent writes what the work meant; code checks
+what it wrote. [`docs/facts-schema.md`](docs/facts-schema.md) has the rules.
+
+```sh
+bin/footprint facts                                   # what counts and how much -> data/facts/
+bin/footprint facts -from 2025-04-01 -to 2026-03-31   # ... and that window's view
+bin/footprint check data/drafts/review.md             # citations and numbers in a note or draft
+```
+
+- `facts` deduplicates the changes, groups the work into items (features under their epics, docs,
+  and per-quarter buckets of work naming no issue), and counts. It writes `overview.md`, `facts.json`,
+  one JSONL file per kind of record, an evidence pack per item, `catalogue.md`, and `todo.txt`: the
+  notes still to write. It reads only `data/raw`, the notes and the context (no config or tokens),
+  so it still works on a copy of the dataset once access to the tools has ended.
+- The agent writes one note per work item, from its pack, in `data/notes/`; a note is reused until
+  its pack changes. It drafts documents in `data/drafts/` from the notes and the facts.
+- `check` fails a note or draft whose citations (`[[PAY-62]]`, `[[repo#123]]`) name nothing, and
+  lists the numbers that match no fact. `-plain` or `-links` writes the version to share.
+- Your own words go in `data/context/`: `profile.md` (titles, dates, teams), `framework.md` (the
+  career framework to map evidence to), and `items/<id>.md` (impact or corrections for one item,
+  which join its pack).
+
+| directory | written by | |
+|---|---|---|
+| `data/raw/` | the collection stages | the dataset |
+| `data/facts/` | `footprint facts` | replaced whole on every run |
+| `data/notes/` | the agent | one per work item |
+| `data/context/` | you, or the agent recording your words | profile, framework, corrections |
+| `data/drafts/` | the agent | documents; `check` writes `.final.md` beside them |
+
 ## Development
 
 ```sh
@@ -189,10 +222,13 @@ internal/envfile/       .env loading
 internal/doc/           raw documents: key-ordered JSON objects, YAML parsing
 internal/par/           bounded parallel work
 internal/logx/          progress logging
+internal/facts/         aggregation: the counting rules, work items, packs, note states, check
 docs/data-schema.md     the output contract (compiled in; written to data/raw/README.md)
+docs/facts-schema.md    the facts contract (compiled in; written to data/facts/README.md)
 config.example.json     config template (compiled in; init copies its mirror settings and tool kinds)
-assets.go               embeds the two compiled-in files
+assets.go               embeds the three compiled-in files
 data/raw/               output: personal, gitignored (start at index.json)
+data/facts/, notes/, context/, drafts/   aggregation: personal, gitignored
 cache/                  git mirrors + status, gitignored, safe to delete
 ```
 

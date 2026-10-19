@@ -1,5 +1,5 @@
-// Package footprint embeds the files the footprint binary ships with, so init and the
-// projects stage work from any directory.
+// Package footprint embeds the files the footprint binary ships with, so init, the projects stage
+// and facts work from any directory.
 package footprint
 
 import _ "embed"
@@ -14,3 +14,8 @@ var ExampleConfig []byte
 //
 //go:embed docs/data-schema.md
 var DataSchema []byte
+
+// FactsSchema documents the facts. The facts command writes it to <facts>/README.md.
+//
+//go:embed docs/facts-schema.md
+var FactsSchema []byte

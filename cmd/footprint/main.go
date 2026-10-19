@@ -26,6 +26,8 @@ Usage:
   footprint init --org <org>          write the config for the authenticated user
   footprint [flags] <stage>...        run stages in the order given
   footprint [flags] all               run every stage
+  footprint [flags] facts             decide what counts, from the collected data -> <facts>/
+  footprint [flags] check <file>...   check a note or draft against the facts
 
 Stages, in the order "all" runs them:
   inventory   every repo in the org, with code host metadata  -> <data>/org/repos.json
@@ -45,6 +47,14 @@ Stages, in the order "all" runs them:
               above them (stories, epics)                      -> <data>/issues/<project>.jsonl
   pages       wiki pages, blog posts etc. the user created or edited, with versions
               and the body as Markdown                         -> <data>/wiki/<space>.jsonl
+
+facts and check read only the collected data, the notes and the context (no config or tokens):
+  facts       work items, changes, issues, docs, repos and totals, with an evidence pack per
+              item and the notes still to write; -from/-to also write that window's view
+              (both days included)                             -> <facts>/, <facts>/windows/
+  check       every [[citation]] must name a record (in a note: its item's), and every number
+              should be a fact in scope or the user's own; -plain or -links also write
+              <file>.final.md, with the citations removed or turned into links
 
 The code host, catalog, issue tracker and wiki are set in the config (code_host, catalog,
 issue_tracker, wiki; the last two are optional); supported: github, backstage, jira, confluence.
@@ -67,6 +77,14 @@ func main() {
 	flags.StringVar(&opts.Org, "org", "", "init: the org to collect from (a GitHub organization)")
 	flags.StringVar(&opts.CodeHost, "code-host", "github", "init: the code host adapter")
 	flags.BoolVar(&opts.Force, "force", false, "init: overwrite an existing config file")
+	var fo factsOptions
+	flags.StringVar(&fo.dir, "facts", "data/facts", "facts: the output directory")
+	flags.StringVar(&fo.notes, "notes", "data/notes", "facts, check: the notes on work items, one <id>.md each")
+	flags.StringVar(&fo.context, "context", "data/context", "facts, check: the user's own words (profile, framework, items/<id>.md)")
+	flags.StringVar(&fo.from, "from", "", "facts: also write the window from this day (YYYY-MM-DD)")
+	flags.StringVar(&fo.to, "to", "", "facts: ... to this day, included")
+	flags.BoolVar(&fo.plain, "plain", false, "check: also write <file>.final.md without the citations")
+	flags.BoolVar(&fo.links, "links", false, "check: also write <file>.final.md with the citations as links")
 	flags.Usage = func() {
 		fmt.Fprint(flags.Output(), usage)
 		flags.PrintDefaults()
@@ -101,7 +119,17 @@ func main() {
 	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	err = run(ctx, opts, stages)
+	switch stages[0] {
+	case "facts":
+		err = errors.New("run facts on its own")
+		if len(stages) == 1 {
+			err = runFacts(opts.DataDir, fo)
+		}
+	case "check":
+		err = runCheck(opts.DataDir, fo, stages[1:])
+	default:
+		err = run(ctx, opts, stages)
+	}
 	stop()
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "footprint:", err)

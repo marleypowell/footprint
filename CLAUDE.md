@@ -1,8 +1,9 @@
 # footprint
 
 A Go CLI that collects raw data about one person's work across an org (commits on every ref,
-their PRs, what each project is, the issues they worked on, the wiki pages they wrote). Aggregating
-it into summaries is a separate, later phase. Setup, stages, flags and config are in `README.md`.
+their PRs, what each project is, the issues they worked on, the wiki pages they wrote), and then
+decides what of it counts (`facts`, `check`) for an agent to make documents from. Setup, stages,
+flags and config are in `README.md`.
 
 - Build with `go build -o bin/footprint ./cmd/footprint`, and run it from the repo root
   (`config.json`, `data/raw` and `cache/` resolve against the working directory).
@@ -35,5 +36,8 @@ it into summaries is a separate, later phase. Setup, stages, flags and config ar
   `Tools.Tracker` / `Tools.Wiki` (no issue keys, the `issues` / `pages` stage skipped).
 - Verify changes with `go test ./...`. `TestPipeline` runs every stage offline through the in-memory
   adapters in `internal/collect/fakes_test.go`, over real git repos.
-- Aggregation work starts by reading `docs/data-schema.md`: its role and duplicate rules (`patch_id`,
-  squash vs original commits) decide what counts.
+- `internal/facts` is the code half of aggregation: pure and offline (it reads `data/raw`,
+  `data/notes` and `data/context`, never config, tokens or mirrors). What counts is decided there,
+  not in the skill or an agent's ad hoc queries. `docs/facts-schema.md` is its contract (embedded;
+  `facts` writes it to `data/facts/README.md`): change it in the same change as any facts field or
+  rule. The output must stay byte-identical for the same inputs (`TestDeterministic`).
