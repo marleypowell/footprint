@@ -120,7 +120,7 @@ func TestWriteUnderRefusesEscapes(t *testing.T) {
 	base := filepath.Join(t.TempDir(), "base")
 	escapes := []string{"../escape.txt", "/tmp/absolute.txt", "a/../../b.txt"}
 	if runtime.GOOS == "windows" { // ordinary file names elsewhere
-		escapes = append(escapes, `..\escape.txt`, `a/..\..\b.txt`, "C:/absolute.txt", "a:stream.txt", "aux/x.txt", "nul.yaml")
+		escapes = append(escapes, `..\escape.txt`, `a/..\..\b.txt`, "C:/absolute.txt", "a:stream.txt", "aux/x.txt", "nul")
 	}
 	for _, p := range escapes {
 		if written, err := writeUnder(base, p, []byte("x")); written || err != nil {
@@ -132,5 +132,17 @@ func TestWriteUnderRefusesEscapes(t *testing.T) {
 	}
 	if written, err := writeUnder(base, "docs/index.md", []byte("x")); !written || err != nil || !fileExists(filepath.Join(base, "docs", "index.md")) {
 		t.Errorf("normal path not written: %v", err)
+	}
+	// A device name with an extension is a device to some Windows versions and an ordinary file name
+	// to others (Windows 11): it is refused, or written as a file under base, never to the device.
+	for _, p := range []string{"nul.yaml", "con.txt"} {
+		written, err := writeUnder(base, p, []byte("x"))
+		if err != nil {
+			t.Errorf("%q: %v", p, err)
+			continue
+		}
+		if info, err := os.Lstat(filepath.Join(base, p)); written && (err != nil || !info.Mode().IsRegular()) {
+			t.Errorf("%q: written, but not as a file under base (%v)", p, err)
+		}
 	}
 }
