@@ -1,7 +1,6 @@
 package facts
 
 import (
-	"bufio"
 	"errors"
 	"io/fs"
 	"os"
@@ -87,27 +86,26 @@ func parseNote(path, text string) *noteFile {
 }
 
 // Frontmatter splits a Markdown file into its leading "---" block of key: value lines and the rest.
+// Lines may end in \n or \r\n.
 func Frontmatter(text string) (map[string]string, string, bool) {
+	all := text
 	text = strings.TrimPrefix(text, "\ufeff")
-	if !strings.HasPrefix(text, "---\n") && !strings.HasPrefix(text, "---\r\n") {
-		return nil, text, false
+	first, rest, ok := strings.Cut(text, "\n")
+	if !ok || strings.TrimSpace(first) != "---" {
+		return nil, all, false
 	}
 	front := map[string]string{}
-	sc := bufio.NewScanner(strings.NewReader(text))
-	sc.Buffer(make([]byte, 0, 64*1024), 16*1024*1024)
-	sc.Scan() // the opening ---
-	consumed := len(sc.Text()) + 1
-	for sc.Scan() {
-		line := sc.Text()
-		consumed += len(line) + 1
+	for rest != "" {
+		line, next, _ := strings.Cut(rest, "\n")
 		if strings.TrimSpace(line) == "---" {
-			return front, text[min(consumed, len(text)):], true
+			return front, next, true
 		}
 		if k, v, ok := strings.Cut(line, ":"); ok {
 			front[strings.TrimSpace(k)] = strings.Trim(strings.TrimSpace(v), `"'`)
 		}
+		rest = next
 	}
-	return nil, text, false
+	return nil, all, false
 }
 
 // headingsOf lists the ## headings of a Markdown body.

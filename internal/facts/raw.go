@@ -42,25 +42,25 @@ func Load(dir string) (*Raw, error) {
 			project.Name, project.URL = repo.Name, repo.URL
 		}
 		raw.Projects = append(raw.Projects, project)
-		commits, err := readJSONL[collect.Commit](filepath.Join(dir, repo.Files["commits"]))
+		commits, err := readJSONL[collect.Commit](dir, repo.Files["commits"])
 		if err != nil {
 			return nil, err
 		}
-		prs, err := readJSONL[collect.PullRequestRecord](filepath.Join(dir, repo.Files["prs"]))
+		prs, err := readJSONL[collect.PullRequestRecord](dir, repo.Files["prs"])
 		if err != nil {
 			return nil, err
 		}
 		raw.Commits, raw.PRs = append(raw.Commits, commits...), append(raw.PRs, prs...)
 	}
 	for _, g := range raw.Index.IssuesByProject {
-		issues, err := readJSONL[collect.IssueRecord](filepath.Join(dir, g.File))
+		issues, err := readJSONL[collect.IssueRecord](dir, g.File)
 		if err != nil {
 			return nil, err
 		}
 		raw.Issues = append(raw.Issues, issues...)
 	}
 	for _, g := range raw.Index.WikiBySpace {
-		pages, err := readJSONL[collect.PageRecord](filepath.Join(dir, g.File))
+		pages, err := readJSONL[collect.PageRecord](dir, g.File)
 		if err != nil {
 			return nil, err
 		}
@@ -90,8 +90,13 @@ func readJSON(path string, v any) (ok bool, err error) {
 	return true, nil
 }
 
-// readJSONL decodes one value per line. A missing file reads as no rows.
-func readJSONL[T any](path string) ([]T, error) {
+// readJSONL decodes one value per line of the file name in dir. A missing file, or no name (the
+// index leaves out the files a repo does not have), reads as no rows.
+func readJSONL[T any](dir, name string) ([]T, error) {
+	if name == "" {
+		return nil, nil
+	}
+	path := filepath.Join(dir, name)
 	f, err := os.Open(path)
 	if errors.Is(err, fs.ErrNotExist) {
 		return nil, nil

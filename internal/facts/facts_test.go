@@ -3,6 +3,7 @@ package facts
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"io/fs"
 	"math/rand"
 	"os"
@@ -366,6 +367,7 @@ func TestCheck(t *testing.T) {
 		body.WriteString("\n## " + s + "\n\nShipped fast search [[ENG-1]] with [[app#5]] and [[app@c1]], see [[doc+100]] and [[ENG-4]].\n")
 	}
 	check(t, "a good note", run(head+body.String()), []string(nil))
+	check(t, "a good note with Windows line endings", run(strings.ReplaceAll(head+body.String(), "\n", "\r\n")), []string(nil))
 	got := run(head + "\n## Summary\n\nAlso [[ENG-2]] and [[ENG-404]], in 12 PRs.\n")
 	if len(got) < 3 || !strings.Contains(strings.Join(got, "\n"), "[[ENG-2]] is not part of ENG-1's evidence") ||
 		!strings.Contains(strings.Join(got, "\n"), "[[ENG-404]] names nothing") || !strings.Contains(strings.Join(got, "\n"), `"12": a note carries no counts`) ||
@@ -410,7 +412,7 @@ func TestDeterministic(t *testing.T) {
 		err := filepath.WalkDir(dir, func(p string, d fs.DirEntry, err error) error {
 			if err == nil && !d.IsDir() {
 				rel, _ := filepath.Rel(dir, p)
-				files[rel], err = os.ReadFile(p)
+				files[filepath.ToSlash(rel)], err = os.ReadFile(p)
 			}
 			return err
 		})
@@ -466,6 +468,11 @@ func TestLoad(t *testing.T) {
 	}
 	raw.Index.Repos[0].Dir = "repos/.app"
 	raw.Index.Repos[0].Files = map[string]string{"commits": "repos/.app/commits.jsonl", "prs": "repos/.app/prs.jsonl"}
+	// a repo without PRs: the index lists no prs file for it
+	lib := commit("l1", "2024-01-02T10:00:00Z", jane, []string{"author", "committer"}, "lib work", func(c *collect.Commit) { c.Repo = "lib" })
+	raw.Index.Repos = append(raw.Index.Repos, collect.IndexRepo{Name: "lib", Dir: "repos/lib", Files: map[string]string{"commits": "repos/lib/commits.jsonl"}})
+	write("repos/lib/project.json", collect.Project{Name: "lib"}, false)
+	write("repos/lib/commits.jsonl", []collect.Commit{lib}, true)
 	raw.Index.IssuesByProject = []collect.IndexGroup{{Key: "ENG", File: "issues/ENG.jsonl"}}
 	raw.Index.WikiBySpace = []collect.IndexGroup{{Key: "ENG", File: "wiki/ENG.jsonl"}}
 	write("index.json", raw.Index, false)
@@ -479,8 +486,8 @@ func TestLoad(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	check(t, "loaded", []int{len(got.Commits), len(got.PRs), len(got.Issues), len(got.Pages), len(got.IssueProjects)},
-		[]int{len(raw.Commits), len(raw.PRs), len(raw.Issues), len(raw.Pages), 1})
+	check(t, "loaded", []int{len(got.Projects), len(got.Commits), len(got.PRs), len(got.Issues), len(got.Pages), len(got.IssueProjects)},
+		[]int{2, len(raw.Commits) + 1, len(raw.PRs), len(raw.Issues), len(raw.Pages), 1})
 	if _, err := Load(t.TempDir()); err == nil || !strings.Contains(err.Error(), "no index.json") {
 		t.Errorf("want a clear error without a dataset, got %v", err)
 	}
@@ -493,4 +500,18 @@ func reflectRows(v any) []any {
 		rows[i] = rv.Index(i).Interface()
 	}
 	return rows
+}
+
+func TestFrontmatter(t *testing.T) {
+	for _, nl := range []string{"\n", "\r\n"} {
+		text := strings.ReplaceAll("---\nitem: ENG-1\ninputs: \"sha256:x\"\n---\n\n## Summary\n", "\n", nl)
+		front, body, ok := Frontmatter(text)
+		check(t, fmt.Sprintf("frontmatter, lines ending %q", nl), []any{ok, front, body},
+			[]any{true, map[string]string{"item": "ENG-1", "inputs": "sha256:x"}, nl + "## Summary" + nl})
+	}
+	for _, text := range []string{"no frontmatter\n", "---\nitem: ENG-1\nnever closed\n"} {
+		if _, body, ok := Frontmatter(text); ok || body != text {
+			t.Errorf("Frontmatter(%q) = %q, %v; want the text back, false", text, body, ok)
+		}
+	}
 }
