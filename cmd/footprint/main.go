@@ -41,7 +41,8 @@ Stages, in the order "all" runs them:
                                                                   <data>/index.json
   verify      cross-check against the host's attribution       -> <data>/org/verification.json
   issues      issues ever assigned to the user, or named in their commits and PRs, with
-              comments, change history and worklogs            -> <data>/issues/<project>.jsonl
+              comments, change history and worklogs, and the issues
+              above them (stories, epics)                      -> <data>/issues/<project>.jsonl
   pages       wiki pages, blog posts etc. the user created or edited, with versions
               and the body as Markdown                         -> <data>/wiki/<space>.jsonl
 

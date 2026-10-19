@@ -133,20 +133,27 @@ func TestPipeline(t *testing.T) {
 		},
 	}
 	jane, colleague := &tracker.User{ID: "u-jane", Name: "Jane Doe"}, &tracker.User{ID: "u-other", Name: "Other Person"}
-	eng := tracker.ProjectRef{Key: "ENG", Name: "Engineering"}
+	eng, ops := tracker.ProjectRef{Key: "ENG", Name: "Engineering"}, tracker.ProjectRef{Key: "OPS", Name: "Operations"}
+	epic := &tracker.IssueRef{Key: "ENG-1", Type: "Project", Level: tracker.EpicLevel} // Linear: issues group into projects
 	issues := &fakeTracker{
 		account:  tracker.Account{ID: "u-jane", Name: "Jane Doe", Email: "jane.doe@example.com"},
 		assigned: []string{"ENG-7", "ENG-99", "OPS-5"},
 		issues: []tracker.Issue{
-			{Key: "ENG-7", Project: eng, Summary: "Planned work", CreatedAt: "2024-01-01T00:00:00+00:00", UpdatedAt: "2024-02-01T00:00:00+00:00",
+			{Key: "ENG-7", Project: eng, Summary: "Planned work", Parent: epic, CreatedAt: "2024-01-01T00:00:00+00:00", UpdatedAt: "2024-02-01T00:00:00+00:00",
 				History:  []tracker.Change{{ID: "h1", Author: jane, Items: []tracker.ChangeItem{{Field: "status", To: ptr("Done")}}}},
 				Worklogs: []tracker.Worklog{{ID: "w1", Author: jane, Seconds: 3600}}},
-			{Key: "ENG-12", Project: eng, Summary: "Add a", Reporter: colleague, CreatedAt: "2024-01-02T00:00:00+00:00"},
-			{Key: "ENG-42", Project: eng, Summary: "Rename a", Assignee: colleague, Reporter: jane, Creator: jane,
+			{Key: "ENG-12", Project: eng, Type: "Sub-issue", Level: tracker.SubtaskLevel, Summary: "Add a", Reporter: colleague,
+				CreatedAt: "2024-01-02T00:00:00+00:00", Parent: &tracker.IssueRef{Key: "ENG-7"}},
+			{Key: "ENG-42", Project: eng, Summary: "Rename a", Assignee: colleague, Reporter: jane, Creator: jane, Parent: epic,
 				History: []tracker.Change{{ID: "h2", Author: colleague, Items: []tracker.ChangeItem{{Field: "assignee", ToID: ptr("u-jane")}}}}},
 			{Key: "ENG-99", PreviousKeys: []string{"ENG-34"}, Project: eng, Summary: "Moved from another team", Assignee: jane,
+				Parent:   &tracker.IssueRef{Key: "ENG-98", Level: tracker.EpicLevel}, // a project since deleted
 				Comments: []tracker.Comment{{ID: "c1", Author: jane, Body: "done"}, {ID: "c2", Author: colleague, Body: "thanks"}}},
-			{Key: "OPS-5", Project: tracker.ProjectRef{Key: "OPS", Name: "Operations"}, Summary: "On call", Assignee: jane},
+			{Key: "OPS-5", Project: ops, Summary: "On call", Assignee: jane},
+			// Ancestors: loaded only because they are above the user's issues, one in another team.
+			{Key: "ENG-1", Project: eng, Type: "Project", Level: tracker.EpicLevel, Summary: "Search",
+				Parent: &tracker.IssueRef{Key: "OPS-1", Level: 2}, Comments: []tracker.Comment{{ID: "c3", Author: jane, Body: "kick-off"}}},
+			{Key: "OPS-1", Project: ops, Type: "Initiative", Level: 2, Summary: "Faster everything"},
 		},
 	}
 	wikiJane, wikiOther := &wiki.User{ID: "u-jane", Name: "Jane Doe"}, &wiki.User{ID: "u-other", Name: "Other Person"}
@@ -313,7 +320,10 @@ func TestPipeline(t *testing.T) {
 	for _, r := range records {
 		byKey[r.Key], order = r, append(order, r.Key)
 	}
-	check("issues, by number", order, []string{"ENG-7", "ENG-12", "ENG-42", "ENG-99"})
+	check("issues, by number", order, []string{"ENG-1", "ENG-7", "ENG-12", "ENG-42", "ENG-99"})
+	check("roles: an ancestor the user commented on", byKey["ENG-1"].Roles, []string{"commenter", "ancestor"})
+	check("levels", []int{byKey["ENG-1"].Level, byKey["ENG-7"].Level, byKey["ENG-12"].Level},
+		[]int{tracker.EpicLevel, tracker.StandardLevel, tracker.SubtaskLevel})
 	check("roles: assigned per the search, edited, logged work", byKey["ENG-7"].Roles, []string{"assignee", "editor", "worklogger"})
 	check("roles: only named in a commit", byKey["ENG-12"].Roles, []string{"referenced"})
 	check("roles: assigned per the history", byKey["ENG-42"].Roles, []string{"assignee", "reporter", "creator", "referenced"})
@@ -326,16 +336,19 @@ func TestPipeline(t *testing.T) {
 	comments := byKey["ENG-99"].Comments
 	check("comments by_user", []bool{comments[0].ByUser, comments[1].ByUser}, []bool{true, false})
 	check("changes by_user", byKey["ENG-7"].History[0].ByUser, true)
-	if ops, err := readJSONL[IssueRecord](filepath.Join(raw, "issues", "OPS.jsonl")); err != nil || len(ops) != 1 {
+	if ops, err := readJSONL[IssueRecord](filepath.Join(raw, "issues", "OPS.jsonl")); err != nil || len(ops) != 2 {
 		t.Errorf("OPS.jsonl: %d records, %v", len(ops), err)
+	} else {
+		check("roles: an ancestor two levels up, in another project", []any{ops[0].Key, ops[0].Roles}, []any{"OPS-1", []string{"ancestor"}})
 	}
 	if fileExists(stale) {
 		t.Error("a stale project file was kept")
 	}
 	var unresolved []UnresolvedKey
 	read("issues/unresolved.json", &unresolved)
-	check("unresolved keys", unresolved, []UnresolvedKey{{Missing: tracker.Missing{Key: "ENG-404", Reason: tracker.NotFound},
-		ReferencedBy: References{Commits: []CommitRef{}, PRs: []PRRef{{Repo: "repo", Number: 7}}}}})
+	check("unresolved keys", unresolved, []UnresolvedKey{
+		{Missing: tracker.Missing{Key: "ENG-98", Reason: tracker.NotFound}, ReferencedBy: References{Commits: []CommitRef{}, PRs: []PRRef{}}},
+		{Missing: tracker.Missing{Key: "ENG-404", Reason: tracker.NotFound}, ReferencedBy: References{Commits: []CommitRef{}, PRs: []PRRef{{Repo: "repo", Number: 7}}}}})
 
 	// wiki/: content the user created or edited, oldest first per space
 	pages, err := readJSONL[PageRecord](filepath.Join(raw, "wiki", "eng.jsonl"))
@@ -354,10 +367,10 @@ func TestPipeline(t *testing.T) {
 
 	// The issues and pages stages ran after projects, and refreshed their parts of the index.
 	read("index.json", &index)
-	check("totals", []int{index.Totals.Issues, index.Totals.WikiPages, index.Totals.Commits}, []int{5, 4, 8})
+	check("totals", []int{index.Totals.Issues, index.Totals.IssueAncestors, index.Totals.WikiPages, index.Totals.Commits}, []int{5, 2, 4, 8})
 	b, _ = json.Marshal(index.IssuesByProject[0])
-	check("issue project", string(b), `{"key":"ENG","name":"Engineering","file":"issues/ENG.jsonl","records":4,`+
-		`"by_role":{"assignee":3,"reporter":1,"creator":1,"commenter":1,"editor":1,"worklogger":1,"referenced":3},`+
+	check("issue project", string(b), `{"key":"ENG","name":"Engineering","file":"issues/ENG.jsonl","records":5,`+
+		`"by_role":{"assignee":3,"reporter":1,"creator":1,"commenter":2,"editor":1,"worklogger":1,"referenced":3,"ancestor":1},`+
 		`"first_created_at":"2024-01-01T00:00:00+00:00","last_updated_at":"2024-02-01T00:00:00+00:00"}`)
 	check("issue projects", len(index.IssuesByProject), 2) // the stale GONE.jsonl the projects stage saw is gone
 	check("wiki spaces", []string{index.WikiBySpace[0].File, index.WikiBySpace[1].File}, []string{"wiki/eng.jsonl", "wiki/product.jsonl"})

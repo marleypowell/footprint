@@ -82,7 +82,7 @@ Then open `data/raw/index.json`, and check `data/raw/org/verification.json`:
 | `catalog` | every catalog entity on every default branch | local git only |
 | `projects` | per-repo `project.json`, docs, `data/raw/index.json`, and the issue tracker's projects | local, plus one project listing; indexes `issues/` and `wiki/` too |
 | `verify` | compares with the code host's own commit attribution | GitHub: ~3 min (search rate limits) |
-| `issues` | issues ever assigned to you, or named in your commits and PRs, with comments, history and worklogs | Jira: one request per issue, a few minutes for thousands; skipped without an `issue_tracker` section |
+| `issues` | issues ever assigned to you, or named in your commits and PRs, with comments, history and worklogs, plus the stories, epics and initiatives above them | Jira: one request per issue, a few minutes for thousands; skipped without an `issue_tracker` section |
 | `pages` | wiki content you created or edited, with versions and the body as Markdown | Confluence: CQL search, then each page; skipped without a `wiki` section |
 
 With an `issue_tracker` section, `prs`, `commits` and `projects` list the tracker's projects (once

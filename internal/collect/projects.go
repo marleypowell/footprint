@@ -117,7 +117,8 @@ type IndexTotals struct {
 	PRsAuthored             int     `json:"prs_authored"`
 	FirstAuthoredAt         *string `json:"first_authored_at"`
 	LastAuthoredAt          *string `json:"last_authored_at"`
-	Issues                  int     `json:"issues"`
+	Issues                  int     `json:"issues"`          // involving the user
+	IssueAncestors          int     `json:"issue_ancestors"` // loaded only as the parents of those, up to the top
 	WikiPages               int     `json:"wiki_pages"`
 }
 
@@ -294,7 +295,8 @@ func (h *harness) projects(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	totals.Issues, totals.WikiPages = records(issueProjects), records(wikiSpaces)
+	totals.Issues, totals.IssueAncestors = issueTotals(issueProjects)
+	totals.WikiPages = records(wikiSpaces)
 	sources := Sources{CodeHost: h.cfg.CodeHost.Kind, Catalog: h.cfg.Catalog.Kind}
 	if h.cfg.IssueTracker != nil {
 		sources.IssueTracker = &h.cfg.IssueTracker.Kind

@@ -46,8 +46,13 @@ type UnresolvedKey struct {
 	ReferencedBy References `json:"referenced_by"`
 }
 
-// issueRoles are the ways an issue can involve the user, in the order records list them.
-var issueRoles = []string{"assignee", "reporter", "creator", "commenter", "editor", "worklogger", "referenced"}
+// issueRoles are the ways an issue can involve the user, in the order records list them. An
+// ancestor is above an issue that involves the user (its parent, up to the top) and was loaded only
+// for that: the epic or initiative the work belongs to.
+var issueRoles = []string{"assignee", "reporter", "creator", "commenter", "editor", "worklogger", "referenced", "ancestor"}
+
+// maxAncestorDepth bounds the walk up the issue hierarchy, which in practice is a few levels deep.
+const maxAncestorDepth = 10
 
 // issueKeys returns the function that finds issue keys in text. With no issue tracker in the config
 // it finds none.
@@ -69,8 +74,8 @@ func trackerProjectsError(err error) error {
 }
 
 // issues loads every issue ever assigned to the user, plus every issue their commits and PRs name
-// (so it runs after prs and commits), then refreshes its part of index.json. With no issue tracker
-// in the config it does nothing.
+// (so it runs after prs and commits), plus the issues above those (ancestors), then refreshes its
+// part of index.json. With no issue tracker in the config it does nothing.
 func (h *harness) issues(ctx context.Context) error {
 	t := h.tools.Tracker
 	if t == nil {
@@ -110,22 +115,39 @@ func (h *harness) issues(ctx context.Context) error {
 			len(keys), missing[0].Key, missing[0].Reason, missing[0].Error)
 	}
 
+	ancestors, gone, err := loadAncestors(ctx, t, loaded)
+	if err != nil {
+		return err
+	}
+	missing = append(missing, gone...)
+
 	byProject := map[string][]IssueRecord{}
-	for _, issue := range loaded {
+	add := func(issue tracker.Issue, ancestor bool) {
 		rec := IssueRecord{Issue: issue}
-		var wasAssigned, referenced bool
+		var known []string
 		for _, k := range append([]string{issue.Key}, issue.PreviousKeys...) {
 			k = strings.ToUpper(k)
-			wasAssigned = wasAssigned || isAssigned[k]
+			if isAssigned[k] {
+				known = append(known, "assignee")
+			}
 			if r := refs[k]; r != nil {
-				referenced = true
+				known = append(known, "referenced")
 				rec.ReferencedBy.Commits = append(rec.ReferencedBy.Commits, r.Commits...)
 				rec.ReferencedBy.PRs = append(rec.ReferencedBy.PRs, r.PRs...)
 			}
 		}
+		if ancestor {
+			known = append(known, "ancestor")
+		}
 		rec.ReferencedBy = rec.ReferencedBy.normalized()
-		rec.Roles = issueInvolvement(&rec.Issue, account.ID, wasAssigned, referenced)
+		rec.Roles = issueInvolvement(&rec.Issue, account.ID, known...)
 		byProject[issue.Project.Key] = append(byProject[issue.Project.Key], rec)
+	}
+	for _, issue := range loaded {
+		add(issue, false)
+	}
+	for _, issue := range ancestors {
+		add(issue, true)
 	}
 	dir := filepath.Join(h.raw, "issues")
 	files := map[string]bool{}
@@ -154,21 +176,85 @@ func (h *harness) issues(ctx context.Context) error {
 	if err := writeJSON(filepath.Join(dir, "unresolved.json"), unresolved); err != nil {
 		return err
 	}
-	logf("issues: %d issues in %d projects; %d keys not loaded %v (issues/unresolved.json)",
-		len(loaded), len(byProject), len(unresolved), reasons)
+	logf("issues: %d issues and %d ancestors in %d projects; %d keys not loaded %v (issues/unresolved.json)",
+		len(loaded), len(ancestors), len(byProject), len(unresolved), reasons)
 	groups, err := indexGroups(dir, "issues/", issueRoles, issueGroup)
 	if err != nil {
 		return err
 	}
-	return h.refreshIndex(func(index *Index) { index.IssuesByProject, index.Totals.Issues = groups, records(groups) })
+	return h.refreshIndex(func(index *Index) {
+		index.IssuesByProject = groups
+		index.Totals.Issues, index.Totals.IssueAncestors = issueTotals(groups)
+	})
 }
 
-// issueInvolvement marks the user's comments, changes and worklogs, and returns the user's roles.
-// assigned says the tracker's search found the user among the assignees.
-func issueInvolvement(issue *tracker.Issue, userID string, assigned, referenced bool) []string {
+// loadAncestors loads the parents of issues that are not among them, then their parents, up to the
+// top of the hierarchy. Each key is asked for once; the keys that fail come back as missing.
+func loadAncestors(ctx context.Context, t tracker.Tracker, issues []tracker.Issue) ([]tracker.Issue, []tracker.Missing, error) {
+	asked, loaded := map[string]bool{}, map[string]bool{} // keys asked for or answered to; current keys loaded
+	answer := func(issue tracker.Issue) {
+		loaded[strings.ToUpper(issue.Key)] = true
+		for _, k := range append([]string{issue.Key}, issue.PreviousKeys...) {
+			asked[strings.ToUpper(k)] = true
+		}
+	}
+	for _, issue := range issues {
+		answer(issue)
+	}
+	var ancestors []tracker.Issue
+	missing := []tracker.Missing{}
+	for depth, level := 0, issues; depth < maxAncestorDepth && len(level) > 0; depth++ {
+		var keys []string
+		for _, issue := range level {
+			if p := issue.Parent; p != nil && !asked[strings.ToUpper(p.Key)] {
+				asked[strings.ToUpper(p.Key)] = true
+				keys = append(keys, strings.ToUpper(p.Key))
+			}
+		}
+		if len(keys) == 0 {
+			break
+		}
+		slices.SortFunc(keys, NaturalCompare)
+		logf("issues: loading %d ancestors, %d levels up", len(keys), depth+1)
+		got, gone, err := t.Issues(ctx, keys)
+		if err != nil {
+			return nil, nil, err
+		}
+		level = nil
+		for _, issue := range got {
+			if loaded[strings.ToUpper(issue.Key)] { // the same issue, under a key it had before
+				continue
+			}
+			answer(issue)
+			ancestors, level = append(ancestors, issue), append(level, issue)
+		}
+		missing = append(missing, gone...)
+	}
+	return ancestors, missing, nil
+}
+
+// issueTotals counts the issues involving the user, and apart from them the ancestors loaded only
+// for context, from the groups indexGroups made.
+func issueTotals(groups []IndexGroup) (issues, ancestors int) {
+	for _, g := range groups {
+		n := 0
+		if v, ok := g.ByRole.Get("ancestor"); ok {
+			n, _ = v.(int) // indexGroups counts in ints
+		}
+		issues, ancestors = issues+g.Records-n, ancestors+n
+	}
+	return issues, ancestors
+}
+
+// issueInvolvement marks the user's comments, changes and worklogs, and returns the user's roles:
+// those the issue shows, plus known, the roles found elsewhere ("assignee" from the tracker's
+// search, "referenced", "ancestor").
+func issueInvolvement(issue *tracker.Issue, userID string, known ...string) []string {
 	isUser := func(u *tracker.User) bool { return u != nil && u.ID == userID }
-	has := map[string]bool{"assignee": assigned || isUser(issue.Assignee), "reporter": isUser(issue.Reporter),
-		"creator": isUser(issue.Creator), "referenced": referenced}
+	has := map[string]bool{"assignee": isUser(issue.Assignee), "reporter": isUser(issue.Reporter), "creator": isUser(issue.Creator)}
+	for _, role := range known {
+		has[role] = true
+	}
 	for i := range issue.Comments {
 		c := &issue.Comments[i]
 		c.ByUser = isUser(c.Author)

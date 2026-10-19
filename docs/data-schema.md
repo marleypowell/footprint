@@ -36,7 +36,8 @@ repos/<repo>/
   commits.jsonl               the user's commits (one JSON object per line, oldest first)
   prs.jsonl                   pull requests authored by the user (one per line, by number)
 issues/
-  <project>.jsonl             issues ever assigned to the user or named in their git work (one per line, by number)
+  <project>.jsonl             issues ever assigned to the user or named in their git work, and the issues
+                              above those (one per line, by number)
   unresolved.json             keys that could not be loaded, with the reason
 wiki/
   <space>.jsonl               wiki content the user created or edited (one per line, oldest first)
@@ -147,13 +148,16 @@ One line per entity, tool-neutral fields first:
 
 ## `issues/<project>.jsonl`
 
-An issue is included if it **is or ever was assigned to the user** (the tracker's own search, archived
-projects included; Jira: JQL `assignee WAS`, which looks at each issue's latest 10,000 changes), or if
-the user's git work names its key: a commit message or a branch holding
-the commit (`commits.jsonl` -> `issue_keys`), or a PR's title, body or branch (`prs.jsonl` ->
-`issue_keys`). There is one file per project the issues are in now, ordered by number. Timestamps are
-UTC, and rich text (descriptions, comments, worklog notes) is Markdown rendered from the tracker's
-format: mentions read `@Name`, embedded macros `[name: parameters]`, images `![file](media:id)`.
+An issue is included if it **is or ever was assigned to the user** (the tracker's own search,
+archived projects included; Jira: JQL `assignee WAS`, which looks at each issue's latest 10,000
+changes), or if the user's git work names its key: a commit message or a branch holding the commit
+(`commits.jsonl` -> `issue_keys`), or a PR's title, body or branch (`prs.jsonl` -> `issue_keys`).
+The issues those sit under are loaded too, so that the work can be grouped: each `parent`, up to the
+top of the hierarchy (stories, epics, initiatives), with the role `ancestor`. Ancestors are context,
+not the user's issues: `index.json` counts them apart, in `totals.issue_ancestors`. There is one
+file per project the issues are in now, ordered by number. Timestamps are UTC, and rich text
+(descriptions, comments, worklog notes) is Markdown rendered from the tracker's format: mentions
+read `@Name`, embedded macros `[name: parameters]`, images `![file](media:id)`.
 
 `org/issue_projects.json` lists the tracker's projects, live and archived, as `{key, name, type,
 archived, previous_keys}`. `previous_keys` are the keys a renamed project had before; older messages
@@ -162,7 +166,7 @@ and branch names still use them, and `issue_keys` keeps them as written.
 | field | meaning |
 |---|---|
 | `key`, `id`, `url` | the issue; `previous_keys` are keys it had before moving project, which older git work may use |
-| `roles` | subset of `assignee`, `reporter`, `creator`, `commenter`, `editor`, `worklogger`, `referenced`: how the user is involved (below) |
+| `roles` | subset of `assignee`, `reporter`, `creator`, `commenter`, `editor`, `worklogger`, `referenced`, `ancestor`: how the user is involved (below) |
 | `referenced_by` | `{commits: [{repo, sha}], prs: [{repo, number}]}`: where the user's git work names the issue, under any of its keys (joins to `commits.jsonl` and `prs.jsonl`) |
 | `project`, `type`, `summary`, `description` | what it is; `project` is `{key, name}` |
 | `level` | the type's place in the tracker's hierarchy: `-1` a sub-task, `0` a standard issue (story, task, bug), `1` an epic (Linear: a project), `2` and above the levels over epics (initiatives) |
@@ -185,6 +189,8 @@ Roles:
 - `commenter`, `editor`, `worklogger`: commented, changed something (status, fields, sprint, links),
   or logged time. `by_user` marks which comments, changes and worklogs.
 - `referenced`: named in the user's git work (`referenced_by`).
+- `ancestor`: above one of the issues that involve the user (its parent, up to the top), and loaded
+  only for that. It can have other roles too: the user commented on the epic, say.
 
 Things the aggregation phase will want to handle:
 
@@ -197,8 +203,8 @@ Things the aggregation phase will want to handle:
 - **`issues/unresolved.json`** lists the keys that could not be loaded, as `{key, reason, error,
   referenced_by}`. `reason` is `not_found` (no such issue: typos and deleted issues; Jira also says
   this for issues the account may not see), `hidden` (the account may not see it) or `failed` (an
-  error that persisted through retries, in `error`: re-run the stage). Keys from the assigned search
-  can appear too, with an empty `referenced_by`.
+  error that persisted through retries, in `error`: re-run the stage). Keys from the assigned search,
+  and parents that could not be loaded, can appear too, with an empty `referenced_by`.
 - **Moved issues** appear once, under their current key and project, with `previous_keys`.
 
 ## `wiki/<space>.jsonl`
