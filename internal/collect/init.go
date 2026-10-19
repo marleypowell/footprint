@@ -77,15 +77,13 @@ func Init(ctx context.Context, opts Options, host codehost.Host) error {
 	if err := json.Unmarshal(footprint.ExampleConfig, &cfg); err != nil {
 		return fmt.Errorf("embedded config.example.json: %w", err)
 	}
-	sameOrg := strings.EqualFold(opts.Org, cfg.Org)
-	if !sameOrg { // the example's catalog, tracker and wiki settings are for its org only
-		cfg.Catalog = Tool{Kind: cfg.Catalog.Kind}
-		if cfg.IssueTracker != nil {
-			cfg.IssueTracker = &Tool{Kind: cfg.IssueTracker.Kind}
-		}
-		if cfg.Wiki != nil {
-			cfg.Wiki = &Tool{Kind: cfg.Wiki.Kind}
-		}
+	// The example's catalog, tracker and wiki settings only illustrate the shape: keep the kinds.
+	cfg.Catalog = Tool{Kind: cfg.Catalog.Kind}
+	if cfg.IssueTracker != nil {
+		cfg.IssueTracker = &Tool{Kind: cfg.IssueTracker.Kind}
+	}
+	if cfg.Wiki != nil {
+		cfg.Wiki = &Tool{Kind: cfg.Wiki.Kind}
 	}
 	cfg.Org, cfg.Login = opts.Org, account.Login
 	if opts.CodeHost != cfg.CodeHost.Kind {
@@ -104,10 +102,8 @@ func Init(ctx context.Context, opts Options, host codehost.Host) error {
 	if len(order) == 0 {
 		logf("init: the code host attributes no commits in this org to the account; add your commit emails by hand")
 	}
-	if !sameOrg {
-		logf("init: the catalog, issue_tracker and wiki sections keep only their kind; add your org's settings " +
-			"(docs in README.md), or remove the issue_tracker and wiki sections")
-	}
+	logf("init: the catalog, issue_tracker and wiki sections keep only their kind; add your org's settings " +
+		"(docs in README.md), or remove the issue_tracker and wiki sections")
 	logf("init: review identity.names (drop any you share with a colleague), then run `all`; the identities " +
 		"and verify stages report anything still missed")
 	return nil

@@ -123,8 +123,9 @@ Every stage is idempotent and overwrites its own output. To refresh later, run
   - `confluence`: `site`.
 - `mirror`: `parallelism` and `fetch_pull_refs`.
 
-The example's catalog, issue tracker and wiki settings are acme's. `init` keeps them only
-when `--org` matches, and keeps just the `kind` for other orgs.
+`init` copies the example's `mirror` settings and the `kind` of each tool. The example's other tool
+settings only show the shape: add your org's (at least the Jira and Confluence `site`), or delete
+the `issue_tracker` and `wiki` sections.
 
 ## Swapping tools
 
@@ -180,7 +181,7 @@ internal/doc/           raw documents: key-ordered JSON objects, YAML parsing
 internal/par/           bounded parallel work
 internal/logx/          progress logging
 docs/data-schema.md     the output contract (compiled in; written to data/raw/README.md)
-config.example.json     config template with acme defaults (compiled in; used by init)
+config.example.json     config template (compiled in; init copies its mirror settings and tool kinds)
 assets.go               embeds the two compiled-in files
 data/raw/               output: personal, gitignored (start at index.json)
 cache/                  git mirrors + status, gitignored, safe to delete

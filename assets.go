@@ -4,8 +4,8 @@ package footprint
 
 import _ "embed"
 
-// ExampleConfig is the config template that `footprint init` fills in for a user. Its catalog
-// and Jira settings are acme's.
+// ExampleConfig is the config template that `footprint init` fills in for a user. init keeps its
+// mirror settings and the kind of each tool; its other tool settings only show the shape.
 //
 //go:embed config.example.json
 var ExampleConfig []byte

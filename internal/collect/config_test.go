@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/marleypowell/footprint"
 	"github.com/marleypowell/footprint/internal/codehost"
 )
 
@@ -87,14 +88,32 @@ func TestInit(t *testing.T) {
 	if cfg.Identity.DiscoveryPattern != "doe|jane|jdoe" {
 		t.Errorf("pattern = %q", cfg.Identity.DiscoveryPattern)
 	}
-	// another org than the example's: keep the tool kinds, drop acme's settings
-	if string(cfg.Catalog.Settings) != `{"kind":"backstage"}` || cfg.IssueTracker == nil || string(cfg.IssueTracker.Settings) != `{"kind":"jira"}` ||
-		cfg.Wiki == nil || string(cfg.Wiki.Settings) != `{"kind":"confluence"}` {
-		t.Errorf("example settings leaked into another org: %s %s %+v", cfg.Catalog.Settings, cfg.IssueTracker.Settings, cfg.Wiki)
+	checkKindsOnly := func(cfg *Config) {
+		t.Helper()
+		if string(cfg.Catalog.Settings) != `{"kind":"backstage"}` || cfg.IssueTracker == nil || string(cfg.IssueTracker.Settings) != `{"kind":"jira"}` ||
+			cfg.Wiki == nil || string(cfg.Wiki.Settings) != `{"kind":"confluence"}` {
+			got, _ := json.Marshal(cfg)
+			t.Errorf("init --org %s should keep only the tool kinds: %s", cfg.Org, got)
+		}
 	}
+	checkKindsOnly(cfg)
 	if err := Init(context.Background(), opts, host); err == nil {
 		t.Error("init should refuse to overwrite without --force")
 	}
+
+	// The example's own org gets the kinds only too: its settings are placeholders.
+	var example Config
+	if err := json.Unmarshal(footprint.ExampleConfig, &example); err != nil {
+		t.Fatal(err)
+	}
+	opts.Org, opts.Force = example.Org, true
+	if err := Init(context.Background(), opts, host); err != nil {
+		t.Fatal(err)
+	}
+	if cfg, err = LoadConfig(path); err != nil {
+		t.Fatal(err)
+	}
+	checkKindsOnly(cfg)
 }
 
 func TestWriteUnderRefusesEscapes(t *testing.T) {
