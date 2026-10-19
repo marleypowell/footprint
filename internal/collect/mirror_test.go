@@ -38,7 +38,7 @@ func TestMirrorRefStore(t *testing.T) {
 	if err := os.MkdirAll(f.dir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	f.git(me, "init", "-q", "-b", "main")
+	f.git(me, "init", "-q", "-b", "main", "--ref-format=reftable") // so it can hold V1.0 and v1.0 where case is ignored
 	f.write("a.txt", "one\n")
 	f.commit(me, "add a")
 	f.git(me, "tag", "V1.0")
