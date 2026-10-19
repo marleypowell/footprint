@@ -34,22 +34,29 @@ func TestLoadConfig(t *testing.T) {
 	if err := json.Unmarshal(cfg.Catalog.Settings, &settings); err != nil || !reflect.DeepEqual(settings.HubRepos, []string{"hub"}) {
 		t.Errorf("adapter settings should reach the adapter: %s", cfg.Catalog.Settings)
 	}
-	if cfg.Mirror.Parallelism != 6 || !cfg.Mirror.FetchPullRefs || cfg.Dir() != dir {
-		t.Errorf("defaults: %+v dir=%s", cfg.Mirror, cfg.Dir())
+	if cfg.Mirror.Parallelism != 6 || !cfg.Mirror.FetchPullRefs {
+		t.Errorf("defaults: %+v", cfg.Mirror)
 	}
 
 	if cfg.Wiki != nil {
 		t.Errorf("the wiki is optional: %+v", cfg.Wiki)
 	}
 
+	write(`{"org": "o", "login": "l", "code_host": {"kind": "github"}, "catalog": {"kind": "backstage"}}`)
+	if cfg, err := LoadConfig(path); err != nil || cfg.IssueTracker != nil {
+		t.Errorf("the issue tracker is optional: %+v, %v", cfg, err)
+	}
+
 	write(`{"org": "o", "login": "l", "code_host": {"kind": "github"}, "issue_tracker": {"kind": "jira"}}`)
 	if _, err := LoadConfig(path); err == nil || !strings.Contains(err.Error(), "catalog.kind") {
 		t.Errorf("a missing tool kind should be reported: %v", err)
 	}
-	write(`{"org": "o", "login": "l", "code_host": {"kind": "github"}, "catalog": {"kind": "backstage"},
-	        "issue_tracker": {"kind": "jira"}, "wiki": {"site": "x"}}`)
-	if _, err := LoadConfig(path); err == nil || !strings.Contains(err.Error(), "wiki.kind") {
-		t.Errorf("a wiki section without a kind should be reported: %v", err)
+	for _, section := range []string{"issue_tracker", "wiki"} {
+		write(`{"org": "o", "login": "l", "code_host": {"kind": "github"}, "catalog": {"kind": "backstage"},
+		        "` + section + `": {"site": "x"}}`)
+		if _, err := LoadConfig(path); err == nil || !strings.Contains(err.Error(), section+".kind") {
+			t.Errorf("a %s section without a kind should be reported: %v", section, err)
+		}
 	}
 }
 
@@ -80,7 +87,7 @@ func TestInit(t *testing.T) {
 		t.Errorf("pattern = %q", cfg.Identity.DiscoveryPattern)
 	}
 	// another org than the example's: keep the tool kinds, drop acme's settings
-	if string(cfg.Catalog.Settings) != `{"kind":"backstage"}` || string(cfg.IssueTracker.Settings) != `{"kind":"jira"}` ||
+	if string(cfg.Catalog.Settings) != `{"kind":"backstage"}` || cfg.IssueTracker == nil || string(cfg.IssueTracker.Settings) != `{"kind":"jira"}` ||
 		cfg.Wiki == nil || string(cfg.Wiki.Settings) != `{"kind":"confluence"}` {
 		t.Errorf("example settings leaked into another org: %s %s %+v", cfg.Catalog.Settings, cfg.IssueTracker.Settings, cfg.Wiki)
 	}

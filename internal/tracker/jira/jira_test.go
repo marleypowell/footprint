@@ -1,18 +1,20 @@
 package jira
 
 import (
-	"os"
-	"path/filepath"
+	"context"
+	"net/http"
+	"net/http/httptest"
 	"reflect"
 	"testing"
 
+	"github.com/marleypowell/footprint/internal/atlassian"
 	"github.com/marleypowell/footprint/internal/tracker"
 )
 
 func TestKeys(t *testing.T) {
-	j, err := New([]byte(`{"kind": "jira", "extra_project_keys": ["SHOP", "APP", "TK", "UI", "CORE", "ACME", "CAFE", "GRO"]}`), "")
-	if err != nil {
-		t.Fatal(err)
+	j := &Tracker{keys: map[string]bool{}}
+	for _, k := range []string{"SHOP", "APP", "TK", "UI", "CORE", "ACME", "CAFE", "GRO"} {
+		j.keys[k] = true
 	}
 	tests := []struct {
 		name, text string
@@ -32,39 +34,67 @@ func TestKeys(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := j.Keys(tt.text); !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("Keys(%q) = %v, want %v", tt.text, got, tt.want)
+			if got := j.findKeys(tt.text); !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("findKeys(%q) = %v, want %v", tt.text, got, tt.want)
 			}
 		})
 	}
-	if got := j.Keys("APP-2", "app-1"); !reflect.DeepEqual(got, []string{"APP-1", "APP-2"}) {
+	if got := j.findKeys("APP-2", "app-1"); !reflect.DeepEqual(got, []string{"APP-1", "APP-2"}) {
 		t.Errorf("several texts: got %v", got)
 	}
 }
 
-func TestProjectsFile(t *testing.T) {
-	dir := t.TempDir()
-	projects := `[{"key": "PAY", "name": "Payments", "projectTypeKey": "software", "archived": false}]`
-	if err := os.WriteFile(filepath.Join(dir, "projects.json"), []byte(projects), 0o644); err != nil {
-		t.Fatal(err)
+// The projects come from project search, live and archived, with the keys each project had before.
+func TestProjects(t *testing.T) {
+	pages := map[string]string{
+		"0": `{"startAt":0,"maxResults":1,"total":2,"isLast":false,"values":[
+		  {"key":"PAY","name":"Payments","projectTypeKey":"software","archived":false,"projectKeys":["PAY"]}]}`,
+		"1": `{"startAt":1,"maxResults":1,"total":2,"isLast":true,"values":[
+		  {"key":"LEG","name":"Legacy","projectTypeKey":"software","archived":true,"projectKeys":["TK","LEG","FW"]}]}`,
 	}
-	j, err := New([]byte(`{"kind": "jira", "projects_file": "projects.json"}`), dir)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		q := r.URL.Query()
+		if r.URL.Path != "/rest/api/3/project/search" || !reflect.DeepEqual(q["status"], []string{"live", "archived"}) ||
+			q.Get("expand") != "projectKeys" {
+			t.Errorf("unexpected request %s", r.URL)
+		}
+		w.Write([]byte(pages[q.Get("startAt")]))
+	}))
+	defer srv.Close()
+	j, err := New([]byte(`{"kind": "jira", "site": "example.atlassian.net", "extra_project_keys": ["dev"]}`))
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := []tracker.Project{{Key: "PAY", Name: "Payments", Type: "software"}}
-	if got := j.Projects(); !reflect.DeepEqual(got, want) {
-		t.Errorf("Projects() = %+v, want %+v", got, want)
-	}
-	if got := j.Keys("fix(PAY-111): timeouts"); !reflect.DeepEqual(got, []string{"PAY-111"}) {
-		t.Errorf("keys from the projects file: %v", got)
-	}
+	j.api = atlassian.NewClient(srv.URL, "https://example.atlassian.net", "e", "t")
+	j.once.Do(func() {})
 
-	none, err := New([]byte(`{"kind": "jira", "projects_file": "missing.json"}`), dir)
+	ctx := context.Background()
+	got, err := j.Projects(ctx)
+	want := []tracker.Project{
+		{Key: "LEG", Name: "Legacy", Type: "software", Archived: true, PreviousKeys: []string{"FW", "TK"}},
+		{Key: "PAY", Name: "Payments", Type: "software", PreviousKeys: []string{}},
+	}
+	if err != nil || !reflect.DeepEqual(got, want) {
+		t.Errorf("Projects() = %+v, %v; want %+v", got, err, want)
+	}
+	keys, err := j.Keys(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(none.Projects()) != 0 || len(none.Keys("PAY-1 SHOP-2")) != 0 {
-		t.Error("with no known projects, nothing is a key")
+	if got := keys("fix(PAY-111): timeouts, tk-4 and LEG-5; DEV-6 moved, UTF-8"); !reflect.DeepEqual(got, []string{"DEV-6", "LEG-5", "PAY-111", "TK-4"}) {
+		t.Errorf("keys of current, previous and extra project keys: %v", got)
+	}
+}
+
+func TestNoProjectsIsAnError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"startAt":0,"maxResults":100,"total":0,"isLast":true,"values":[]}`))
+	}))
+	defer srv.Close()
+	j, _ := New([]byte(`{"site": "example.atlassian.net"}`))
+	j.api = atlassian.NewClient(srv.URL, "https://example.atlassian.net", "e", "t")
+	j.once.Do(func() {})
+	if _, err := j.Keys(context.Background()); err == nil {
+		t.Error("an account that sees no projects would find no keys, silently")
 	}
 }

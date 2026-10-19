@@ -1,6 +1,6 @@
-// Package jira is the issue tracker adapter for Jira Cloud: PROJ-123 keys of known projects, found
-// case-insensitively in commit messages, branch names and pull requests, and the REST API (v3) for
-// the issues themselves.
+// Package jira is the issue tracker adapter for Jira Cloud: PROJ-123 keys of the site's projects,
+// found case-insensitively in commit messages, branch names and pull requests, and the REST API (v3)
+// for the projects and issues themselves.
 package jira
 
 import (
@@ -8,10 +8,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io/fs"
-	"os"
-	"path/filepath"
+	"net/url"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -20,16 +19,20 @@ import (
 	"github.com/marleypowell/footprint/internal/tracker"
 )
 
-// Tracker finds keys of known Jira projects, and loads issues from one Jira site. With no known
-// projects it finds no keys: a bare KEY-123 pattern matches too much (UTF-8, ISO-8601, dotnet-8...).
+// Tracker finds keys of the site's projects, and loads issues from one Jira site. Only real
+// projects' keys count: a bare KEY-123 pattern matches too much (UTF-8, ISO-8601, dotnet-8...).
 type Tracker struct {
-	projects []tracker.Project
-	keys     map[string]bool
-	site     string
+	site  string
+	extra []string // project keys the API does not list
 
 	once   sync.Once
 	api    *atlassian.Client
 	apiErr error
+
+	projectsOnce sync.Once
+	projects     []tracker.Project
+	keys         map[string]bool
+	projectsErr  error
 }
 
 var _ tracker.Tracker = (*Tracker)(nil)
@@ -37,72 +40,82 @@ var _ tracker.Tracker = (*Tracker)(nil)
 type settings struct {
 	// Site is the Jira Cloud site, e.g. "example.atlassian.net".
 	Site string `json:"site"`
-	// ProjectsFile lists the projects, as Jira's project search API returns them (relative to the
-	// config file). Export it with the Atlassian connector.
-	ProjectsFile string `json:"projects_file"`
-	// ExtraProjectKeys are projects missing from the file: archived ones still seen in branch names.
+	// ExtraProjectKeys are keys that issues were moved out of, in projects since deleted: the API
+	// lists live and archived projects, with their previous keys, but not these.
 	ExtraProjectKeys []string `json:"extra_project_keys"`
 }
 
-// New returns the adapter. settings is the issue_tracker config section; relative paths in it
-// resolve against baseDir.
-func New(raw json.RawMessage, baseDir string) (*Tracker, error) {
+// New returns the adapter. settings is the issue_tracker config section.
+func New(raw json.RawMessage) (*Tracker, error) {
 	var s settings
 	if len(raw) > 0 {
 		if err := json.Unmarshal(raw, &s); err != nil {
 			return nil, fmt.Errorf("jira settings: %w", err)
 		}
 	}
-	t := &Tracker{projects: []tracker.Project{}, keys: map[string]bool{}, site: s.Site}
-	if s.ProjectsFile != "" {
-		file := s.ProjectsFile
-		if !filepath.IsAbs(file) {
-			file = filepath.Join(baseDir, file)
-		}
-		projects, err := readProjects(file)
-		if err != nil {
-			return nil, err
-		}
-		t.projects = projects
-	}
-	for _, p := range t.projects {
-		t.keys[strings.ToUpper(p.Key)] = true
-	}
+	t := &Tracker{site: s.Site}
 	for _, k := range s.ExtraProjectKeys {
-		t.keys[strings.ToUpper(k)] = true
+		t.extra = append(t.extra, strings.ToUpper(k))
 	}
 	return t, nil
 }
 
-// readProjects reads Jira's project fields (key, name, projectTypeKey, archived). A missing file
-// reads as no projects.
-func readProjects(file string) ([]tracker.Project, error) {
-	data, err := os.ReadFile(file)
-	if errors.Is(err, fs.ErrNotExist) {
-		return []tracker.Project{}, nil
-	}
+// Projects lists every project the account can browse, live or archived, sorted by key.
+func (t *Tracker) Projects(ctx context.Context) ([]tracker.Project, error) {
+	t.projectsOnce.Do(func() { t.projects, t.projectsErr = t.loadProjects(ctx) })
+	return t.projects, t.projectsErr
+}
+
+func (t *Tracker) loadProjects(ctx context.Context) ([]tracker.Project, error) {
+	api, err := t.client(ctx)
 	if err != nil {
 		return nil, err
 	}
-	var raw []struct {
-		Key            string `json:"key"`
-		Name           string `json:"name"`
-		ProjectTypeKey string `json:"projectTypeKey"`
-		Archived       bool   `json:"archived"`
+	type project struct {
+		Key            string   `json:"key"`
+		Name           string   `json:"name"`
+		ProjectTypeKey string   `json:"projectTypeKey"`
+		Archived       bool     `json:"archived"`
+		ProjectKeys    []string `json:"projectKeys"` // every key the project has had, current included
 	}
-	if err := json.Unmarshal(data, &raw); err != nil {
-		return nil, fmt.Errorf("%s: %w", file, err)
+	raw, err := allPages[project](ctx, api, "/rest/api/3/project/search", "values", 100,
+		url.Values{"status": {"live", "archived"}, "expand": {"projectKeys"}})
+	if err != nil {
+		return nil, err
 	}
 	projects := make([]tracker.Project, 0, len(raw))
+	t.keys = map[string]bool{}
 	for _, p := range raw {
-		projects = append(projects, tracker.Project{Key: p.Key, Name: p.Name, Type: p.ProjectTypeKey, Archived: p.Archived})
+		previous := []string{}
+		for _, k := range p.ProjectKeys {
+			if k != p.Key {
+				previous = append(previous, k)
+			}
+			t.keys[strings.ToUpper(k)] = true
+		}
+		slices.Sort(previous)
+		t.keys[strings.ToUpper(p.Key)] = true
+		projects = append(projects, tracker.Project{Key: p.Key, Name: p.Name, Type: p.ProjectTypeKey,
+			Archived: p.Archived, PreviousKeys: previous})
 	}
+	if len(projects) == 0 {
+		return nil, errors.New("jira: the account can browse no projects, so no issue keys would be found")
+	}
+	for _, k := range t.extra {
+		t.keys[k] = true
+	}
+	slices.SortFunc(projects, func(a, b tracker.Project) int { return strings.Compare(a.Key, b.Key) })
 	return projects, nil
 }
 
-func (t *Tracker) Projects() []tracker.Project { return t.projects }
+func (t *Tracker) Keys(ctx context.Context) (tracker.KeyFunc, error) {
+	if _, err := t.Projects(ctx); err != nil {
+		return nil, err
+	}
+	return t.findKeys, nil
+}
 
-// client returns the API client, connecting on first use so that Keys and Projects need no token.
+// client returns the API client, connecting on first use.
 func (t *Tracker) client(ctx context.Context) (*atlassian.Client, error) {
 	t.once.Do(func() {
 		if t.site == "" {
@@ -177,7 +190,7 @@ var (
 	guidRE      = regexp.MustCompile(`[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}`)
 )
 
-func (t *Tracker) Keys(texts ...string) []string {
+func (t *Tracker) findKeys(texts ...string) []string {
 	found := map[string]bool{}
 	add := func(project, number string) {
 		if project = strings.ToUpper(project); t.keys[project] {

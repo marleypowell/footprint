@@ -46,9 +46,10 @@ Stages, in the order "all" runs them:
               and the body as Markdown                         -> <data>/wiki/<space>.jsonl
 
 The code host, catalog, issue tracker and wiki are set in the config (code_host, catalog,
-issue_tracker, wiki); supported: github, backstage, jira, confluence. Jira and Confluence
-authenticate with ATLASSIAN_EMAIL and ATLASSIAN_API_TOKEN, read from the environment or from
-the .env file (see .env.example and README.md).
+issue_tracker, wiki; the last two are optional); supported: github, backstage, jira, confluence.
+Jira and Confluence authenticate with ATLASSIAN_EMAIL and ATLASSIAN_API_TOKEN, read from the
+environment or from the .env file (see .env.example and README.md). With Jira configured, prs,
+commits and projects need the token too, to list its projects.
 
 Flags (anywhere on the command line):
 `

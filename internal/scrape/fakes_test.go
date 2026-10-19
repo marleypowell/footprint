@@ -128,7 +128,9 @@ var _ tracker.Tracker = (*fakeTracker)(nil)
 
 var linearKeyRE = regexp.MustCompile(`(?i)\beng-(\d+)\b`)
 
-func (f *fakeTracker) Keys(texts ...string) []string {
+func (f *fakeTracker) Keys(context.Context) (tracker.KeyFunc, error) { return linearKeys, nil }
+
+func linearKeys(texts ...string) []string {
 	set := map[string]bool{}
 	for _, text := range texts {
 		for _, m := range linearKeyRE.FindAllStringSubmatch(text, -1) {
@@ -143,8 +145,8 @@ func (f *fakeTracker) Keys(texts ...string) []string {
 	return keys
 }
 
-func (f *fakeTracker) Projects() []tracker.Project {
-	return []tracker.Project{{Key: "ENG", Name: "Engineering", Type: "team"}}
+func (f *fakeTracker) Projects(context.Context) ([]tracker.Project, error) {
+	return []tracker.Project{{Key: "ENG", Name: "Engineering", Type: "team", PreviousKeys: []string{}}}, nil
 }
 
 func (f *fakeTracker) Account(context.Context) (tracker.Account, error) { return f.account, nil }

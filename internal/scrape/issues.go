@@ -49,10 +49,34 @@ type UnresolvedKey struct {
 // issueRoles are the ways an issue can involve the user, in the order records list them.
 var issueRoles = []string{"assignee", "reporter", "creator", "commenter", "editor", "worklogger", "referenced"}
 
+// issueKeys returns the function that finds issue keys in text. With no issue tracker in the config
+// it finds none.
+func (h *harness) issueKeys(ctx context.Context) (tracker.KeyFunc, error) {
+	if h.tools.Tracker == nil {
+		return func(...string) []string { return []string{} }, nil
+	}
+	keys, err := h.tools.Tracker.Keys(ctx)
+	if err != nil {
+		return nil, trackerProjectsError(err)
+	}
+	return keys, nil
+}
+
+// trackerProjectsError explains a failure to list the issue tracker's projects.
+func trackerProjectsError(err error) error {
+	return fmt.Errorf("listing the issue tracker's projects, to recognise issue keys "+
+		"(to collect without issues, remove issue_tracker from the config): %w", err)
+}
+
 // issues loads every issue ever assigned to the user, plus every issue their commits and PRs name
-// (so it runs after prs and commits), then refreshes its part of index.json.
+// (so it runs after prs and commits), then refreshes its part of index.json. With no issue tracker
+// in the config it does nothing.
 func (h *harness) issues(ctx context.Context) error {
 	t := h.tools.Tracker
+	if t == nil {
+		logf("issues: no issue tracker in the config; skipping")
+		return nil
+	}
 	account, err := t.Account(ctx)
 	if err != nil {
 		return err

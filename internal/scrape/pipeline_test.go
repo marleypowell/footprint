@@ -163,11 +163,11 @@ func TestPipeline(t *testing.T) {
 			CreatedAt: "2024-05-01T00:00:00+00:00", CreatedBy: wikiOther, Version: 5, Versions: []wiki.Version{{Number: 5, Author: wikiOther}}},
 	}}
 	cfg := &Config{
-		Org: "org", Login: "jdoe", dir: root,
+		Org: "org", Login: "jdoe",
 		Identity:     IdentityConfig{Emails: []string{"jane.doe@example.com"}, Names: []string{"Jane Doe"}, DiscoveryPattern: "jane|doe"},
 		CodeHost:     Tool{Kind: "fakehost"},
 		Catalog:      Tool{Kind: "fakecatalog"},
-		IssueTracker: Tool{Kind: "faketracker"},
+		IssueTracker: &Tool{Kind: "faketracker"},
 		Wiki:         &Tool{Kind: "fakewiki"},
 		Mirror:       MirrorConfig{Parallelism: 2, FetchPullRefs: true},
 	}
@@ -276,7 +276,7 @@ func TestPipeline(t *testing.T) {
 	// index.json and org files
 	var index Index
 	read("index.json", &index)
-	check("sources", index.Sources, Sources{CodeHost: "fakehost", Catalog: "fakecatalog", IssueTracker: "faketracker", Wiki: ptr("fakewiki")})
+	check("sources", index.Sources, Sources{CodeHost: "fakehost", Catalog: "fakecatalog", IssueTracker: ptr("faketracker"), Wiki: ptr("fakewiki")})
 	check("index login", index.Login, "jdoe")
 	check("index catalog summary", index.Repos[0].Catalog, []IndexEntity{{Ref: "service:repo", Category: "component",
 		Title: ptr("Repo service"), Description: ptr("Does things")}})
@@ -360,6 +360,32 @@ func TestPipeline(t *testing.T) {
 	check("wiki spaces", []string{index.WikiBySpace[0].File, index.WikiBySpace[1].File}, []string{"wiki/eng.jsonl", "wiki/product.jsonl"})
 	if index.Repos[0].CommitsByRoles == nil || len(index.Repos[0].CommitsByRoles.Keys()) == 0 {
 		t.Error("refreshing the index lost the repos' commits_by_roles")
+	}
+
+	// Without an issue tracker in the config, git work names no issues and the issues stage does
+	// nothing; the issues/ files already collected stay.
+	cfg.IssueTracker = nil
+	noTracker := Tools{Host: host, Catalog: fakeCatalog{}, Wiki: notes}
+	if err := Run(context.Background(), opts, cfg, noTracker, []string{"prs", "commits", "projects", "issues"}); err != nil {
+		t.Fatal(err)
+	}
+	if rows, err = readJSONL[Commit](filepath.Join(raw, "repos", "repo", "commits.jsonl")); err != nil || len(rows) != 8 {
+		t.Fatalf("commits without an issue tracker: %d, %v", len(rows), err)
+	}
+	for _, r := range rows {
+		check("issue keys without an issue tracker", r.IssueKeys, []string{})
+	}
+	if prs, err = readJSONL[PullRequestRecord](filepath.Join(raw, "repos", "repo", "prs.jsonl")); err != nil {
+		t.Fatal(err)
+	}
+	check("PR issue keys without an issue tracker", prs[0].IssueKeys, []string{})
+	read("index.json", &index)
+	check("sources without an issue tracker", index.Sources.IssueTracker, (*string)(nil))
+	if fileExists(filepath.Join(raw, "org", "issue_projects.json")) {
+		t.Error("issue_projects.json outlived the issue tracker")
+	}
+	if !fileExists(filepath.Join(raw, "issues", "ENG.jsonl")) {
+		t.Error("the issues stage removed issues without an issue tracker")
 	}
 }
 

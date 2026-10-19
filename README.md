@@ -61,15 +61,16 @@ Then open `data/raw/index.json`, and check `data/raw/org/verification.json`:
 | `mirror` | bare clone / incremental fetch of every non-empty repo into `cache/mirrors/` | branches, tags and change-request heads; ~3 min cold |
 | `identities` | lists every identity resembling you, with counts | flags variants your config does not match |
 | `prs` | your PRs with their commits and files | GitHub: GraphQL search, ~4 min |
-| `commits` | your commits on any ref | local git only, ~30 s |
+| `commits` | your commits on any ref | local git, ~30 s |
 | `catalog` | every catalog entity on every default branch | local git only |
-| `projects` | per-repo `project.json`, docs, and `data/raw/index.json` | local; indexes `issues/` and `wiki/` too |
+| `projects` | per-repo `project.json`, docs, `data/raw/index.json`, and the issue tracker's projects | local, plus one project listing; indexes `issues/` and `wiki/` too |
 | `verify` | compares with the code host's own commit attribution | GitHub: ~3 min (search rate limits) |
-| `issues` | issues ever assigned to you, or named in your commits and PRs, with comments, history and worklogs | Jira: one request per issue, a few minutes for thousands |
+| `issues` | issues ever assigned to you, or named in your commits and PRs, with comments, history and worklogs | Jira: one request per issue, a few minutes for thousands; skipped without an `issue_tracker` section |
 | `pages` | wiki content you created or edited, with versions and the body as Markdown | Confluence: CQL search, then each page; skipped without a `wiki` section |
 
-`issues` and `pages` run last because they need the Atlassian token; they refresh their own parts of
-`index.json`. Without a token, `all` still completes everything else, then fails at `issues`.
+With an `issue_tracker` section, `prs`, `commits` and `projects` list the tracker's projects (once
+per run) to recognise issue keys, so they need its token too: without the Atlassian token, `all`
+stops at `prs`. `issues` and `pages` run last and refresh their own parts of `index.json`.
 
 Every stage is idempotent and overwrites its own output. To refresh later, run
 `mirror prs commits projects verify issues pages`. Flags can go anywhere on the command line:
@@ -96,24 +97,23 @@ Every stage is idempotent and overwrites its own output. To refresh later, run
 - `identity.discovery_pattern`: a regex (valid as both RE2 and POSIX ERE) that the `identities`
   report uses to find variants worth adding, and that `commits` uses to find possible
   `Co-authored-by` trailers.
-- `code_host`, `catalog`, `issue_tracker`, `wiki`: one section per tool (the wiki is optional;
-  without it the `pages` stage does nothing). `kind` picks the adapter, and the rest of the section
-  is that adapter's settings:
+- `code_host`, `catalog`, `issue_tracker`, `wiki`: one section per tool. The issue tracker and wiki
+  are optional: without an `issue_tracker`, commits and PRs have no `issue_keys` and the `issues`
+  stage does nothing; without a `wiki`, the `pages` stage does nothing. `kind` picks the adapter, and
+  the rest of the section is that adapter's settings:
   - `github`: no settings.
   - `backstage`: `hub_repos`, the repos holding entities for *other* repos. Entities found there are
     tied to a repo through annotations or links, not by where the file lives.
-  - `jira`: `site` (`example.atlassian.net`), plus `projects_file` (relative to the config file)
-    and `extra_project_keys`: the real project keys, so `issue_keys` picks up `ABC-123` and skips
-    look-alikes such as `UTF-8`. With neither, no issue keys are extracted.
+  - `jira`: `site` (`example.atlassian.net`), and optionally `extra_project_keys`. `issue_keys`
+    picks up `ABC-123` only for real projects, and skips look-alikes such as `UTF-8`. The adapter
+    lists the site's live and archived projects, with the keys renamed projects had before.
+    `extra_project_keys` adds keys the API cannot list, such as those of deleted projects that issues
+    were moved out of.
   - `confluence`: `site`.
 - `mirror`: `parallelism` and `fetch_pull_refs`.
 
 The example's catalog, issue tracker and wiki settings are acme's. `init` keeps them only
 when `--org` matches, and keeps just the `kind` for other orgs.
-
-[`jira_projects.json`](jira_projects.json) is a snapshot of acme's Jira projects, taken with
-the Atlassian connector in Claude Code (`getVisibleJiraProjects`, `action=browse`). Archived projects
-are not listed, which is why `extra_project_keys` exists.
 
 ## Swapping tools
 
@@ -170,7 +170,6 @@ internal/par/           bounded parallel work
 internal/logx/          progress logging
 docs/data-schema.md     the output contract (compiled in; written to data/raw/README.md)
 config.example.json     config template with acme defaults (compiled in; used by init)
-jira_projects.json      acme Jira project keys
 assets.go               embeds the two compiled-in files
 data/raw/               output: personal, gitignored (start at index.json)
 cache/                  git mirrors + status, gitignored, safe to delete

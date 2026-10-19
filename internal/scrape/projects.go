@@ -100,11 +100,12 @@ type Index struct {
 	WikiBySpace     []IndexGroup `json:"wiki_by_space"`
 }
 
-// Sources names the adapter that produced each part of the dataset; Wiki is null without one.
+// Sources names the adapter that produced each part of the dataset; IssueTracker and Wiki are null
+// without one.
 type Sources struct {
 	CodeHost     string  `json:"code_host"`
 	Catalog      string  `json:"catalog"`
-	IssueTracker string  `json:"issue_tracker"`
+	IssueTracker *string `json:"issue_tracker"`
 	Wiki         *string `json:"wiki"`
 }
 
@@ -153,11 +154,18 @@ type IndexEntity struct {
 	Type        *string `json:"type"`
 }
 
-// projects writes each active repo's project.json and docs, then index.json and the schema doc.
+// projects writes each active repo's project.json and docs, then index.json, the issue tracker's
+// projects and the schema doc.
 func (h *harness) projects(ctx context.Context) error {
 	repos, err := h.loadRepos()
 	if err != nil {
 		return err
+	}
+	var trackerProjects []tracker.Project // listed first, so that a tracker failing fails fast
+	if h.tools.Tracker != nil {
+		if trackerProjects, err = h.tools.Tracker.Projects(ctx); err != nil {
+			return trackerProjectsError(err)
+		}
 	}
 	byName := map[string]Repo{}
 	for _, r := range repos {
@@ -287,7 +295,10 @@ func (h *harness) projects(ctx context.Context) error {
 		return err
 	}
 	totals.Issues, totals.WikiPages = records(issueProjects), records(wikiSpaces)
-	sources := Sources{CodeHost: h.cfg.CodeHost.Kind, Catalog: h.cfg.Catalog.Kind, IssueTracker: h.cfg.IssueTracker.Kind}
+	sources := Sources{CodeHost: h.cfg.CodeHost.Kind, Catalog: h.cfg.Catalog.Kind}
+	if h.cfg.IssueTracker != nil {
+		sources.IssueTracker = &h.cfg.IssueTracker.Kind
+	}
 	if h.cfg.Wiki != nil {
 		sources.Wiki = &h.cfg.Wiki.Kind
 	}
@@ -299,10 +310,13 @@ func (h *harness) projects(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	if projects := h.tools.Tracker.Projects(); len(projects) > 0 {
-		if err := writeJSON(filepath.Join(h.raw, "org", "issue_projects.json"), orEmpty[tracker.Project](projects)); err != nil {
+	issueProjectsFile := filepath.Join(h.raw, "org", "issue_projects.json")
+	if h.tools.Tracker == nil {
+		if err := os.Remove(issueProjectsFile); err != nil && !errors.Is(err, fs.ErrNotExist) {
 			return err
 		}
+	} else if err := writeJSON(issueProjectsFile, orEmpty(trackerProjects)); err != nil {
+		return err
 	}
 	if err := writeFileAtomic(filepath.Join(h.raw, "README.md"), footprint.DataSchema); err != nil {
 		return err

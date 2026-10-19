@@ -34,10 +34,10 @@ func newCatalog(kind string, settings json.RawMessage) (catalog.Catalog, error) 
 	return nil, unsupported("catalog", kind, "backstage")
 }
 
-func newTracker(kind string, settings json.RawMessage, configDir string) (tracker.Tracker, error) {
+func newTracker(kind string, settings json.RawMessage) (tracker.Tracker, error) {
 	switch kind {
 	case "jira":
-		return jira.New(settings, configDir)
+		return jira.New(settings)
 	}
 	return nil, unsupported("issue_tracker", kind, "jira")
 }
@@ -59,12 +59,14 @@ func newTools(cfg *scrape.Config) (scrape.Tools, error) {
 	if err != nil {
 		return scrape.Tools{}, err
 	}
-	issues, err := newTracker(cfg.IssueTracker.Kind, cfg.IssueTracker.Settings, cfg.Dir())
-	if err != nil {
-		return scrape.Tools{}, err
+	tools := scrape.Tools{Host: host, Catalog: cat}
+	// The issue tracker and wiki are optional; a nil adapter would be a non-nil interface.
+	if cfg.IssueTracker != nil {
+		if tools.Tracker, err = newTracker(cfg.IssueTracker.Kind, cfg.IssueTracker.Settings); err != nil {
+			return scrape.Tools{}, err
+		}
 	}
-	tools := scrape.Tools{Host: host, Catalog: cat, Tracker: issues}
-	if cfg.Wiki != nil { // optional; a nil adapter would be a non-nil interface
+	if cfg.Wiki != nil {
 		if tools.Wiki, err = newWiki(cfg.Wiki.Kind, cfg.Wiki.Settings); err != nil {
 			return scrape.Tools{}, err
 		}

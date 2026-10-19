@@ -5,7 +5,8 @@ raw on purpose: nothing is summarised, deduplicated or filtered beyond "involves
 record says *how* it involves the user, so the aggregation phase decides what counts.
 
 The field names are tool-neutral. `index.json` -> `sources` records which code host, catalog, issue
-tracker and wiki produced the data (today `github`, `backstage`, `jira`, `confluence`). Where a
+tracker and wiki produced the data (today `github`, `backstage`, `jira`, `confluence`). The issue
+tracker and wiki are optional: without one, its source is `null` and its files are absent. Where a
 record keeps a tool's own data as written (the raw catalog `entity`, an issue's `fields`, `kind`,
 `source_repo_basis`), that is noted.
 
@@ -23,7 +24,7 @@ README.md                     this file
 org/
   repos.json                  every repo in the org (code host metadata), including ones with no activity
   identities.json             every author/committer/co-author identity resembling the user, with counts
-  issue_projects.json         the issue tracker's projects (key -> name), when known, for decoding issue_keys
+  issue_projects.json         the issue tracker's projects, live and archived, for decoding issue_keys
   verification.json           cross-check against the code host's own attribution (see Completeness)
 catalog/
   entities.jsonl              every catalog entity found on any default branch in the org
@@ -67,7 +68,7 @@ squash-merged PRs are present as well as the squash commit.
 | `branches`, `pull_request_refs`, `tags` | for commits **not** on the default branch only: which other refs contain it (capped at 50 each; `containing_ref_counts` has the true totals). The lowest PR number is usually the PR that introduced the commit |
 | `pr_numbers_in_message` | change-request numbers the message says it merged, by the code host's conventions (GitHub: `Title (#123)` squash subjects, `Merge pull request #123`) |
 | `azure_devops_pr_numbers_in_message` | pre-migration `Merged PR 12345:` numbers (Azure DevOps; not the current host's PRs) |
-| `issue_keys` | issue tracker keys from the message and containing branch names, restricted to the tracker's real projects (`org/issue_projects.json` plus extras in config) |
+| `issue_keys` | issue tracker keys from the message and containing branch names, restricted to the tracker's real projects: the keys in `org/issue_projects.json`, their `previous_keys`, and extras in config (keys of deleted projects that issues were moved out of). The tracker resolves an old key to the issue's current one. Empty without an issue tracker |
 | `patch_id` | `git patch-id --stable`: equal for the same change rebased/cherry-picked onto another base. Null for merges/empty commits |
 | `stats` | `{files, additions, deletions, binary_files}` for the whole commit |
 | `files` | `[{path, old_path?, status, similarity?, additions, deletions, binary}]`; status is A/M/D/R/T. Capped at 5000 (`files_truncated`) |
@@ -104,7 +105,7 @@ Pull requests (merge requests, on GitLab) whose author is the user, in any state
 | `labels`, `assignees`, `closing_issues` | metadata |
 | `commits` | every commit in the PR (`sha`, `headline`, author name/email/login). Joins to `commits.jsonl` by `sha`; commits by other people (or agents) in the user's PRs are listed here even when they are not in `commits.jsonl` |
 | `files` | every changed path with `additions`, `deletions`, `change_type` |
-| `issue_keys` | from title, body and head branch name |
+| `issue_keys` | from title, body and head branch name, as for commits |
 
 ## project.json (what each project is)
 
@@ -146,6 +147,10 @@ the commit (`commits.jsonl` -> `issue_keys`), or a PR's title, body or branch (`
 `issue_keys`). There is one file per project the issues are in now, ordered by number. Timestamps are
 UTC, and rich text (descriptions, comments, worklog notes) is Markdown rendered from the tracker's
 format: mentions read `@Name`, embedded macros `[name: parameters]`, images `![file](media:id)`.
+
+`org/issue_projects.json` lists the tracker's projects, live and archived, as `{key, name, type,
+archived, previous_keys}`. `previous_keys` are the keys a renamed project had before; older messages
+and branch names still use them, and `issue_keys` keeps them as written.
 
 | field | meaning |
 |---|---|

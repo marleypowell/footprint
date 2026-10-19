@@ -7,15 +7,13 @@ package tracker
 
 import "context"
 
-// Tracker is the issue tracker, as the authenticated account sees it.
-//
-// Keys and Projects work offline, from configuration. Account, Assigned and Issues call the
-// tracker's API; adapters authenticate on first use.
+// Tracker is the issue tracker, as the authenticated account sees it. Every method may call the
+// tracker's API; adapters authenticate on first use, and list the projects once.
 type Tracker interface {
-	// Keys returns the sorted, de-duplicated issue keys mentioned in the texts.
-	Keys(texts ...string) []string
-	// Projects lists the tracker's projects (or teams), for decoding keys. It may be empty.
-	Projects() []Project
+	// Projects lists the tracker's projects (or teams), archived ones included, for decoding keys.
+	Projects(ctx context.Context) ([]Project, error)
+	// Keys returns the function that finds issue keys in text, for the tracker's projects.
+	Keys(ctx context.Context) (KeyFunc, error)
 
 	// Account is the authenticated user.
 	Account(ctx context.Context) (Account, error)
@@ -27,6 +25,9 @@ type Tracker interface {
 	// in PreviousKeys.
 	Issues(ctx context.Context, keys []string) (issues []Issue, missing []Missing, err error)
 }
+
+// KeyFunc returns the sorted, de-duplicated issue keys mentioned in the texts.
+type KeyFunc func(texts ...string) []string
 
 // Missing is a key Issues could not load (<data>/issues/unresolved.json).
 type Missing struct {
@@ -44,10 +45,11 @@ const (
 
 // Project is one project (or team) in the tracker (<data>/org/issue_projects.json).
 type Project struct {
-	Key      string `json:"key"`
-	Name     string `json:"name"`
-	Type     string `json:"type"`
-	Archived bool   `json:"archived"`
+	Key          string   `json:"key"`
+	Name         string   `json:"name"`
+	Type         string   `json:"type"`
+	Archived     bool     `json:"archived"`
+	PreviousKeys []string `json:"previous_keys"` // keys the project had before it was renamed
 }
 
 // Account is a user of the tracker.

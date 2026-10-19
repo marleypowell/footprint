@@ -144,7 +144,7 @@ func testTracker(t *testing.T) *Tracker {
 	t.Helper()
 	srv := fakeJira(t)
 	t.Cleanup(srv.Close)
-	j, err := New([]byte(`{"kind":"jira","site":"example.atlassian.net"}`), "")
+	j, err := New([]byte(`{"kind":"jira","site":"example.atlassian.net"}`))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -241,7 +241,7 @@ func TestAssignedNeedsKeys(t *testing.T) {
 		w.Write([]byte(`{"issues":[{"id":"1001"}]}`))
 	}))
 	defer srv.Close()
-	j, _ := New([]byte(`{"site":"example.atlassian.net"}`), "")
+	j, _ := New([]byte(`{"site":"example.atlassian.net"}`))
 	j.api = atlassian.NewClient(srv.URL, "https://example.atlassian.net", "e", "t")
 	j.once.Do(func() {})
 	if _, err := j.Assigned(context.Background(), tracker.Account{ID: "u-me"}); err == nil {

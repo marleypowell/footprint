@@ -20,6 +20,10 @@ type PullRequestRecord struct {
 
 // prs fetches every PR the user authored in the org, with its commits and files.
 func (h *harness) prs(ctx context.Context) error {
+	issueKeys, err := h.issueKeys(ctx)
+	if err != nil {
+		return err
+	}
 	prs, err := h.tools.Host.PullRequests(ctx, h.cfg.Login)
 	if err != nil {
 		return err
@@ -29,7 +33,7 @@ func (h *harness) prs(ctx context.Context) error {
 		if byRepo[pr.Repo] == nil {
 			byRepo[pr.Repo] = map[int]PullRequestRecord{}
 		}
-		byRepo[pr.Repo][pr.Number] = PullRequestRecord{PullRequest: pr, IssueKeys: h.tools.Tracker.Keys(pr.Title, pr.Body, pr.HeadRef)}
+		byRepo[pr.Repo][pr.Number] = PullRequestRecord{PullRequest: pr, IssueKeys: issueKeys(pr.Title, pr.Body, pr.HeadRef)}
 	}
 	entries, err := os.ReadDir(filepath.Join(h.raw, "repos"))
 	if err != nil && !errors.Is(err, fs.ErrNotExist) {

@@ -16,6 +16,7 @@ import (
 	"sync/atomic"
 
 	"github.com/marleypowell/footprint/internal/par"
+	"github.com/marleypowell/footprint/internal/tracker"
 )
 
 const (
@@ -113,9 +114,13 @@ func (h *harness) commits(ctx context.Context) error {
 		return err
 	}
 	repos = h.selected(repos)
+	issueKeys, err := h.issueKeys(ctx)
+	if err != nil {
+		return err
+	}
 	var done, total, active atomic.Int64
 	err = par.ForEach(ctx, 6, repos, func(ctx context.Context, _ int, r Repo) error {
-		rows, err := h.extractCommits(ctx, r)
+		rows, err := h.extractCommits(ctx, r, issueKeys)
 		if err != nil {
 			return fmt.Errorf("%s: %w", r.Name, err)
 		}
@@ -143,7 +148,7 @@ func (h *harness) commits(ctx context.Context) error {
 }
 
 // extractCommits finds every commit on any ref of a repo that involves the user.
-func (h *harness) extractCommits(ctx context.Context, repo Repo) ([]Commit, error) {
+func (h *harness) extractCommits(ctx context.Context, repo Repo, issueKeys tracker.KeyFunc) ([]Commit, error) {
 	path := h.mirrorPath(repo.Name)
 	roles, mentions, err := h.candidates(ctx, path)
 	if err != nil {
@@ -261,7 +266,7 @@ func (h *harness) extractCommits(ctx context.Context, repo Repo) ([]Commit, erro
 			OnDefaultBranch:               onDefault[sha],
 			PRNumbersInMessage:            orEmpty(h.tools.Host.PullRequestNumbers(d.message)),
 			AzureDevOpsPRNumbersInMessage: adoPRNumbersInMessage(d.message),
-			IssueKeys:                     h.tools.Tracker.Keys(d.message),
+			IssueKeys:                     issueKeys(d.message),
 			Stats:                         stats,
 			Files:                         d.files[:min(len(d.files), maxFilesPerCommit)],
 			FilesTruncated:                len(d.files) > maxFilesPerCommit,
@@ -293,7 +298,7 @@ func (h *harness) extractCommits(ctx context.Context, repo Repo) ([]Commit, erro
 		}
 		refs := classifyRefs(containment[r.SHA])
 		r.Branches, r.PullRequestRefs, r.Tags, r.ContainingRefCounts = refs.branches, refs.prs, refs.tags, refs.counts
-		r.IssueKeys = mergeSorted(r.IssueKeys, h.tools.Tracker.Keys(strings.Join(refs.branches, " ")))
+		r.IssueKeys = mergeSorted(r.IssueKeys, issueKeys(strings.Join(refs.branches, " ")))
 	}
 	sort.Slice(rows, func(i, j int) bool {
 		ti, tj := parseTime(rows[i].Author.Date), parseTime(rows[j].Author.Date)

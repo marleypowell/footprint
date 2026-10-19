@@ -80,7 +80,9 @@ func Init(ctx context.Context, opts Options, host codehost.Host) error {
 	sameOrg := strings.EqualFold(opts.Org, cfg.Org)
 	if !sameOrg { // the example's catalog, tracker and wiki settings are for its org only
 		cfg.Catalog = Tool{Kind: cfg.Catalog.Kind}
-		cfg.IssueTracker = Tool{Kind: cfg.IssueTracker.Kind}
+		if cfg.IssueTracker != nil {
+			cfg.IssueTracker = &Tool{Kind: cfg.IssueTracker.Kind}
+		}
 		if cfg.Wiki != nil {
 			cfg.Wiki = &Tool{Kind: cfg.Wiki.Kind}
 		}
@@ -104,7 +106,7 @@ func Init(ctx context.Context, opts Options, host codehost.Host) error {
 	}
 	if !sameOrg {
 		logf("init: the catalog, issue_tracker and wiki sections keep only their kind; add your org's settings " +
-			"(docs in README.md), or remove the wiki section")
+			"(docs in README.md), or remove the issue_tracker and wiki sections")
 	}
 	logf("init: review identity.names (drop any you share with a colleague), then run `all`; the identities " +
 		"and verify stages report anything still missed")

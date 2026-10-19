@@ -30,7 +30,7 @@ type Options struct {
 	Force      bool   // init only
 }
 
-// Tools are the adapters for one run. Wiki is nil when the config has no wiki.
+// Tools are the adapters for one run. Tracker and Wiki are nil when the config has none.
 type Tools struct {
 	Host    codehost.Host
 	Catalog catalog.Catalog
@@ -39,8 +39,9 @@ type Tools struct {
 }
 
 // StageOrder is the order `all` runs the stages in. commits reads prs (for the pr-author role), and
-// issues reads both (for the keys they name). issues and pages come last, after the stages that need
-// only the code host: they need another login, and they refresh their own parts of index.json.
+// issues reads both (for the keys they name). prs, commits and projects list the issue tracker's
+// projects, to recognise its keys. issues and pages come last: they refresh their own parts of
+// index.json.
 var StageOrder = []string{"inventory", "mirror", "identities", "prs", "commits", "catalog", "projects", "verify", "issues", "pages"}
 
 // Stages expands "all" and checks the names, before anything runs.
