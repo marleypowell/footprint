@@ -37,7 +37,8 @@ others.
 
 - Cite the records in this pack: the item, its issues, its changes, its docs.
 - Describe size in words ("a long-running effort", "a handful of fixes"); numbers come from the facts
-  when drafting. Versions and names such as Angular 15 are fine.
+  when drafting. Write versions and product names as they are (Angular 15, .NET 8, Office 365):
+  check tells them from counts.
 - Prefer the user's words in the pack's "From you" section to your inference, and keep their
   corrections.
 - For a stale note, revise the existing text for what the pack adds or changes, and keep the rest.

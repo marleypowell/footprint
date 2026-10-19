@@ -368,6 +368,18 @@ func TestCheck(t *testing.T) {
 	}
 	check(t, "a good note", run(head+body.String()), []string(nil))
 	check(t, "a good note with Windows line endings", run(strings.ReplaceAll(head+body.String(), "\n", "\r\n")), []string(nil))
+	var names strings.Builder
+	for _, s := range NoteSections {
+		names.WriteString("\n## " + s + "\n\nMoved Office 365 tenants to Angular 9 and .NET 10 [[ENG-1]], fixing HTTP 429 errors in version 2.\n" +
+			"Angular 9, C# 12, Node 18 and Windows 11.\n\n- Python 3\n")
+	}
+	check(t, "versions and names are not counts", run(head+names.String()), []string(nil))
+	counts := run(head + "\n## Summary\n\nMerged 12 PRs. Led 4 people, and I wrote 3 docs.\n")
+	for _, n := range []string{`"12"`, `"4"`, `"3"`} {
+		if !strings.Contains(strings.Join(counts, "\n"), n+": a note carries no counts") {
+			t.Errorf("no count warning for %s:\n%s", n, strings.Join(counts, "\n"))
+		}
+	}
 	got := run(head + "\n## Summary\n\nAlso [[ENG-2]] and [[ENG-404]], in 12 PRs.\n")
 	if len(got) < 3 || !strings.Contains(strings.Join(got, "\n"), "[[ENG-2]] is not part of ENG-1's evidence") ||
 		!strings.Contains(strings.Join(got, "\n"), "[[ENG-404]] names nothing") || !strings.Contains(strings.Join(got, "\n"), `"12": a note carries no counts`) ||
@@ -384,7 +396,7 @@ func TestCheck(t *testing.T) {
 		findings = append(findings, fd.String())
 	}
 	want := []string{
-		`7: warning: "4" matches no fact in scope`, `7: warning: "40%" is derived`, `7: warning: "1.22" matches no fact in scope`,
+		`7: warning: "4" matches no fact in scope`, `7: warning: "40%" is derived`, // Go 1.22 is a version
 		"9: warning: https://tracker.example/browse/ENG-999 is not in the dataset", "9: warning: ENG-77 is not in the dataset",
 	}
 	if len(findings) != len(want) {

@@ -210,13 +210,14 @@ sha), or a doc (`doc+<id>`). A draft's frontmatter names its window: `window: al
 
 - **Errors** (it exits 1): no frontmatter; a citation naming nothing; in a note, a citation outside
   its item's evidence, a missing section, or missing inputs.
-- **Warnings**: in a note, any count; in a draft, any number (outside dates, keys, citations, links
-  and code) that matches no fact in scope, within 10% when written as an approximation ("about 300",
-  "1.2k", a round number). In scope are the window's totals, the totals of a year or quarter the
-  paragraph names, the numbers of the records the paragraph cites, and every number in the user's
-  context files. Percentages and multiples are derived: they pass only as the user's own figures.
-  A link to the code host, tracker or wiki that is not in the dataset, and a key of a real project
-  that is not, are warnings too (the dataset leaves out issues the user only commented on).
+- **Warnings**: in a note, any count; in a draft, any number (outside dates, keys, citations, links,
+  code, and names and versions such as Angular 15, .NET 8 or Office 365) that matches no fact in
+  scope, within 10% when written as an approximation ("about 300", "1.2k", a round number). In scope
+  are the window's totals, the totals of a year or quarter the paragraph names, the numbers of the
+  records the paragraph cites, and every number in the user's context files. Percentages and
+  multiples are derived: they pass only as the user's own figures. A link to the code host, tracker
+  or wiki that is not in the dataset, and a key of a real project that is not, are warnings too (the
+  dataset leaves out issues the user only commented on).
 - `-plain` writes `<file>.final.md` without the citations (a CV); `-links` with them as links. The
   draft stays the one to edit.
 

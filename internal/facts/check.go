@@ -9,6 +9,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"unicode"
 )
 
 // Finding is one thing check found in a file. Errors fail the check; warnings are for the agent to
@@ -289,6 +290,9 @@ func (c *checker) paragraph(lines []string, idx []int) {
 			if loc[10] >= 0 {
 				suffix = n.text[loc[10]:loc[11]]
 			}
+			if suffix == "" && loc[2] == loc[3] && partOfName(n.text[:start], n.text[end:]) {
+				continue
+			}
 			got := strings.TrimSpace(n.text[start:end])
 			if c.note != nil {
 				c.add(n.line+1, false, "%q: a note carries no counts (they come from the facts when drafting), in %q", got, original[n.line])
@@ -305,6 +309,37 @@ func (c *checker) paragraph(lines []string, idx []int) {
 			}
 		}
 	}
+}
+
+var (
+	versionWords = map[string]bool{"version": true, "release": true, "level": true, "phase": true, "sprint": true, "tier": true}
+	listMarkerRE = regexp.MustCompile(`^([-*+>]|\d+[.)])$`)
+	countNounRE  = regexp.MustCompile(`^([a-z]|[A-Za-z]+s\b)`) // what a number could count: "12 PRs", "4 people"
+)
+
+// partOfName says whether a number, between before and after on its line, belongs to a name or a
+// version rather than counting something: Angular 15, .NET 8, Office 365, HTTP 429, version 2. The
+// word before it names something when it has a capital letter. At the start of a sentence every
+// word has one, so there the number must also not be followed by what it could count ("Merged 12
+// PRs", "Led 4 people").
+func partOfName(before, after string) bool {
+	if !strings.HasSuffix(before, " ") || strings.HasSuffix(before, "  ") {
+		return false
+	}
+	before = strings.TrimSuffix(before, " ")
+	word := before[strings.LastIndexAny(before, " \t")+1:]
+	bare := strings.TrimLeft(word, "*_([\"'")
+	if versionWords[strings.ToLower(bare)] {
+		return true
+	}
+	if !strings.ContainsFunc(bare, unicode.IsUpper) {
+		return false
+	}
+	rest := strings.TrimSpace(before[:len(before)-len(word)])
+	if rest != "" && !strings.ContainsAny(rest[len(rest)-1:], ".!?:;") && !listMarkerRE.MatchString(rest) {
+		return true // within a sentence
+	}
+	return !countNounRE.MatchString(strings.TrimLeft(after, " "))
 }
 
 func parseCount(s string) (float64, bool) {
