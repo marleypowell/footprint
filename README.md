@@ -47,7 +47,10 @@ Then open `data/raw/index.json`, and check `data/raw/org/verification.json`:
 ## Requirements
 
 - Go 1.24 or newer.
-- git 2.31 or newer.
+- git 2.31 or newer. On a filesystem that ignores letter case (Windows, and macOS by default), use
+  git 2.46 or newer: mirrors there keep their refs in git's reftable store, so a repo with refs that
+  differ only in case (a tag `V1.0` beside `v1.0`) still mirrors. `mirror` moves mirrors made
+  before to it.
 - For the GitHub adapter: the `gh` CLI, logged in (`gh auth login`) with `repo` and `read:org`. For
   orgs with SAML SSO, authorise the token for the org. API calls use `gh auth token` (or
   `GH_TOKEN` / `GITHUB_TOKEN`), and git fetches authenticate through `gh auth git-credential`.

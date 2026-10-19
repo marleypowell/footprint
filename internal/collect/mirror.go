@@ -2,11 +2,15 @@ package collect
 
 import (
 	"context"
+	"fmt"
 	"io/fs"
 	"math"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -49,11 +53,15 @@ func (h *harness) mirror(ctx context.Context) error {
 	if _, err := readJSON(h.mirrorStatusPath(), &status); err != nil {
 		return err
 	}
+	store, err := h.refStore(ctx)
+	if err != nil {
+		return err
+	}
 	results := make(chan MirrorStatus)
 	go func() {
 		defer close(results)
 		_ = par.ForEach(ctx, h.cfg.Mirror.Parallelism, repos, func(ctx context.Context, _ int, r Repo) error {
-			results <- h.mirrorOne(ctx, r)
+			results <- h.mirrorOne(ctx, r, store)
 			return nil // failures are recorded and can be retried with --only
 		})
 	}()
@@ -83,7 +91,82 @@ func (h *harness) mirror(ctx context.Context) error {
 	return nil
 }
 
-func (h *harness) mirrorOne(ctx context.Context, r Repo) MirrorStatus {
+// refStore is how mirrors keep their refs. git's usual store writes a file per ref, so on a
+// filesystem that ignores letter case (Windows, and macOS by default) two refs that differ only in
+// case (a tag V1.0 beside v1.0) are the same file, and the fetch fails. There, mirrors use the
+// reftable store, which keeps refs in tables: new ones are made with it (git 2.45 or newer), and
+// older ones are moved to it (git 2.46 or newer).
+type refStore struct {
+	reftable bool // make new mirrors with the reftable store
+	migrate  bool // move existing mirrors to it
+}
+
+// caseInsensitive reports whether file names in dir ignore letter case. Tests replace it.
+var caseInsensitive = func(dir string) (bool, error) {
+	f, err := os.CreateTemp(dir, "case-probe-")
+	if err != nil {
+		return false, err
+	}
+	name := f.Name()
+	f.Close()
+	defer os.Remove(name)
+	_, err = os.Stat(filepath.Join(dir, strings.ToUpper(filepath.Base(name))))
+	return err == nil, nil
+}
+
+func (h *harness) refStore(ctx context.Context) (refStore, error) {
+	if err := os.MkdirAll(h.mirrors, 0o755); err != nil {
+		return refStore{}, err
+	}
+	insensitive, err := caseInsensitive(h.mirrors)
+	if err != nil || !insensitive {
+		return refStore{}, err
+	}
+	major, minor, err := gitVersion(ctx)
+	if err != nil {
+		return refStore{}, err
+	}
+	switch at := func(ma, mi int) bool { return major > ma || major == ma && minor >= mi }; {
+	case at(2, 46):
+		return refStore{reftable: true, migrate: true}, nil
+	case at(2, 45):
+		return refStore{reftable: true}, nil
+	}
+	logf("mirror: this filesystem ignores letter case, so with git %d.%d a repo with refs that differ only "+
+		"in case (a tag V1.0 beside v1.0) fails to mirror; git 2.46 or newer keeps them", major, minor)
+	return refStore{}, nil
+}
+
+var gitVersionRE = regexp.MustCompile(`git version (\d+)\.(\d+)`)
+
+// gitVersion is the installed git's major and minor version ("git version 2.47.1.windows.1").
+func gitVersion(ctx context.Context) (major, minor int, err error) {
+	cmd := exec.CommandContext(ctx, "git", "version")
+	cmd.Env = baseGitEnv
+	out, err := cmd.Output()
+	if err != nil {
+		return 0, 0, err
+	}
+	m := gitVersionRE.FindStringSubmatch(string(out))
+	if m == nil {
+		return 0, 0, fmt.Errorf("unrecognised git version %q", strings.TrimSpace(string(out)))
+	}
+	major, _ = strconv.Atoi(m[1])
+	minor, _ = strconv.Atoi(m[2])
+	return major, minor, nil
+}
+
+// moveToReftable moves a mirror made with git's files ref store to the reftable store.
+func moveToReftable(ctx context.Context, path string) error {
+	out, err := git(ctx, path, nil, "rev-parse", "--show-ref-format")
+	if err != nil || strings.TrimSpace(string(out)) != "files" {
+		return err
+	}
+	_, err = git(ctx, path, nil, "refs", "migrate", "--ref-format=reftable")
+	return err
+}
+
+func (h *harness) mirrorOne(ctx context.Context, r Repo, store refStore) MirrorStatus {
 	path := h.mirrorPath(r.Name)
 	start := time.Now()
 	status := MirrorStatus{Name: r.Name}
@@ -96,8 +179,12 @@ func (h *harness) mirrorOne(ctx context.Context, r Repo) MirrorStatus {
 			if err := os.MkdirAll(path, 0o755); err != nil {
 				return err
 			}
+			initArgs := []string{"init", "--bare", "--quiet"}
+			if store.reftable {
+				initArgs = append(initArgs, "--ref-format=reftable")
+			}
 			setup := [][]string{
-				{"init", "--bare", "--quiet"},
+				initArgs,
 				{"remote", "add", "origin", remote.URL},
 				{"config", "remote.origin.fetch", "+refs/heads/*:refs/heads/*"},
 				{"config", "--add", "remote.origin.fetch", "+refs/tags/*:refs/tags/*"},
@@ -110,6 +197,10 @@ func (h *harness) mirrorOne(ctx context.Context, r Repo) MirrorStatus {
 				if _, err := git(ctx, path, nil, args...); err != nil {
 					return err
 				}
+			}
+		} else if store.migrate {
+			if err := moveToReftable(ctx, path); err != nil {
+				logf("mirror %s: moving to the reftable ref store: %v", r.Name, err) // the fetch may work anyway
 			}
 		}
 		if _, err := runGit(ctx, gitEnv(remote.GitConfig...), path, nil, "fetch", "--prune", "--quiet", "origin"); err != nil {
