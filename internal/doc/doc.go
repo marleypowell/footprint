@@ -12,7 +12,7 @@ import (
 	"slices"
 	"strings"
 
-	"gopkg.in/yaml.v3"
+	"go.yaml.in/yaml/v3"
 )
 
 // Object is a JSON object that keeps insertion order (encoding/json sorts map keys).
