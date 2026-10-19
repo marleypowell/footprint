@@ -99,7 +99,7 @@ func (h *harness) issues(ctx context.Context) error {
 		wanted[k] = true
 	}
 	keys := sortedKeys(wanted)
-	slices.SortFunc(keys, naturalCompare)
+	slices.SortFunc(keys, NaturalCompare)
 	logf("issues: %d assigned to %s at some point, %d named in git work: loading %d", len(assigned), account.Name, len(refs), len(keys))
 	loaded, missing, err := t.Issues(ctx, keys)
 	if err != nil {
@@ -130,7 +130,7 @@ func (h *harness) issues(ctx context.Context) error {
 	dir := filepath.Join(h.raw, "issues")
 	files := map[string]bool{}
 	for project, rows := range byProject {
-		slices.SortFunc(rows, func(a, b IssueRecord) int { return naturalCompare(a.Key, b.Key) })
+		slices.SortFunc(rows, func(a, b IssueRecord) int { return NaturalCompare(a.Key, b.Key) })
 		name := fileName(project) + ".jsonl"
 		if err := writeJSONL(filepath.Join(dir, name), rows); err != nil {
 			return err
@@ -150,7 +150,7 @@ func (h *harness) issues(ctx context.Context) error {
 		unresolved = append(unresolved, u)
 		reasons[m.Reason]++
 	}
-	slices.SortFunc(unresolved, func(a, b UnresolvedKey) int { return naturalCompare(a.Key, b.Key) })
+	slices.SortFunc(unresolved, func(a, b UnresolvedKey) int { return NaturalCompare(a.Key, b.Key) })
 	if err := writeJSON(filepath.Join(dir, "unresolved.json"), unresolved); err != nil {
 		return err
 	}
@@ -247,9 +247,9 @@ func (r References) normalized() References {
 	return References{Commits: orEmpty(slices.Compact(commits)), PRs: orEmpty(slices.Compact(prs))}
 }
 
-// naturalCompare orders strings with runs of digits compared as numbers, so issue keys sort as
+// NaturalCompare orders strings with runs of digits compared as numbers, so issue keys sort as
 // ENG-9 before ENG-10 whatever the tracker's key format.
-func naturalCompare(a, b string) int {
+func NaturalCompare(a, b string) int {
 	x, y := a, b
 	for x != "" && y != "" {
 		if isDigit(x[0]) && isDigit(y[0]) {

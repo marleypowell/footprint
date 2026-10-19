@@ -411,7 +411,7 @@ func TestIssuesKeepsDataWhenNothingLoads(t *testing.T) {
 
 func TestNaturalCompare(t *testing.T) {
 	keys := []string{"ENG-10", "ENG-9", "AB-100", "ENG-009", "ENG-1a", "ENG-1"}
-	slices.SortFunc(keys, naturalCompare)
+	slices.SortFunc(keys, NaturalCompare)
 	if want := []string{"AB-100", "ENG-1", "ENG-1a", "ENG-009", "ENG-9", "ENG-10"}; !reflect.DeepEqual(keys, want) {
 		t.Errorf("got %v, want %v", keys, want)
 	}
