@@ -8,7 +8,7 @@ import (
 	"github.com/marleypowell/footprint/internal/catalog/backstage"
 	"github.com/marleypowell/footprint/internal/codehost"
 	"github.com/marleypowell/footprint/internal/codehost/github"
-	"github.com/marleypowell/footprint/internal/scrape"
+	"github.com/marleypowell/footprint/internal/collect"
 	"github.com/marleypowell/footprint/internal/tracker"
 	"github.com/marleypowell/footprint/internal/tracker/jira"
 	"github.com/marleypowell/footprint/internal/wiki"
@@ -50,25 +50,25 @@ func newWiki(kind string, settings json.RawMessage) (wiki.Wiki, error) {
 	return nil, unsupported("wiki", kind, "confluence")
 }
 
-func newTools(cfg *scrape.Config) (scrape.Tools, error) {
+func newTools(cfg *collect.Config) (collect.Tools, error) {
 	host, err := newCodeHost(cfg.CodeHost.Kind, cfg.Org, cfg.CodeHost.Settings)
 	if err != nil {
-		return scrape.Tools{}, err
+		return collect.Tools{}, err
 	}
 	cat, err := newCatalog(cfg.Catalog.Kind, cfg.Catalog.Settings)
 	if err != nil {
-		return scrape.Tools{}, err
+		return collect.Tools{}, err
 	}
-	tools := scrape.Tools{Host: host, Catalog: cat}
+	tools := collect.Tools{Host: host, Catalog: cat}
 	// The issue tracker and wiki are optional; a nil adapter would be a non-nil interface.
 	if cfg.IssueTracker != nil {
 		if tools.Tracker, err = newTracker(cfg.IssueTracker.Kind, cfg.IssueTracker.Settings); err != nil {
-			return scrape.Tools{}, err
+			return collect.Tools{}, err
 		}
 	}
 	if cfg.Wiki != nil {
 		if tools.Wiki, err = newWiki(cfg.Wiki.Kind, cfg.Wiki.Settings); err != nil {
-			return scrape.Tools{}, err
+			return collect.Tools{}, err
 		}
 	}
 	return tools, nil

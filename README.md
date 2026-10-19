@@ -117,7 +117,7 @@ when `--org` matches, and keeps just the `kind` for other orgs.
 
 ## Swapping tools
 
-Each tool sits behind a Go interface, and the scraper core (`internal/scrape`) uses only those
+Each tool sits behind a Go interface, and the collection core (`internal/collect`) uses only those
 interfaces. Adapters are wired up in `cmd/footprint/tools.go`, by the `kind` in each config
 section:
 
@@ -132,7 +132,7 @@ To add one, write a package beside the existing adapter that satisfies the inter
 case to `cmd/footprint/tools.go`. The interface docs state the contracts. For example, a code
 host's `Remote` must fetch change-request heads to `refs/pull/<n>/head` (GitLab:
 `+refs/merge-requests/*/head:refs/pull/*/head`). The in-memory adapters in
-`internal/scrape/fakes_test.go`, written in GitLab, Cortex, Linear and Notion style, show the shape,
+`internal/collect/fakes_test.go`, written in GitLab, Cortex, Linear and Notion style, show the shape,
 and `TestPipeline` runs every stage through them. The Jira and Confluence adapters share
 `internal/atlassian` (authentication, retries, and rendering Atlassian's rich text as Markdown).
 
@@ -158,7 +158,7 @@ go vet ./...
 
 ```
 cmd/footprint/          CLI entry point; tools.go wires the adapters
-internal/scrape/        the stages and git mirroring: the core, tool-neutral
+internal/collect/       the stages and git mirroring: the core, tool-neutral
 internal/codehost/      code host interface + github adapter
 internal/catalog/       catalog interface + backstage adapter
 internal/tracker/       issue tracker interface + jira adapter

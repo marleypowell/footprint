@@ -14,9 +14,9 @@ import (
 	"strings"
 	"syscall"
 
+	"github.com/marleypowell/footprint/internal/collect"
 	"github.com/marleypowell/footprint/internal/envfile"
 	"github.com/marleypowell/footprint/internal/logx"
-	"github.com/marleypowell/footprint/internal/scrape"
 )
 
 const usage = `footprint collects raw data about one person's work across an org: commits, pull
@@ -56,7 +56,7 @@ Flags (anywhere on the command line):
 
 func main() {
 	flags := flag.NewFlagSet("footprint", flag.ExitOnError)
-	var opts scrape.Options
+	var opts collect.Options
 	var envPath string
 	flags.StringVar(&envPath, "env", ".env", "file of KEY=value tokens loaded into the environment (variables already set win)")
 	flags.StringVar(&opts.ConfigPath, "config", "config.json", "personal config file (identity, org)")
@@ -108,7 +108,7 @@ func main() {
 	}
 }
 
-func run(ctx context.Context, opts scrape.Options, stages []string) error {
+func run(ctx context.Context, opts collect.Options, stages []string) error {
 	if slices.Contains(stages, "init") {
 		if len(stages) > 1 {
 			return errors.New("run init on its own, review the config it writes, then run the stages")
@@ -120,13 +120,13 @@ func run(ctx context.Context, opts scrape.Options, stages []string) error {
 		if err != nil {
 			return err
 		}
-		return scrape.Init(ctx, opts, host)
+		return collect.Init(ctx, opts, host)
 	}
-	stages, err := scrape.Stages(stages)
+	stages, err := collect.Stages(stages)
 	if err != nil {
 		return err
 	}
-	cfg, err := scrape.LoadConfig(opts.ConfigPath)
+	cfg, err := collect.LoadConfig(opts.ConfigPath)
 	if errors.Is(err, fs.ErrNotExist) {
 		return fmt.Errorf("%s not found: run `footprint init --org <org>` first", opts.ConfigPath)
 	}
@@ -137,5 +137,5 @@ func run(ctx context.Context, opts scrape.Options, stages []string) error {
 	if err != nil {
 		return err
 	}
-	return scrape.Run(ctx, opts, cfg, tools, stages)
+	return collect.Run(ctx, opts, cfg, tools, stages)
 }

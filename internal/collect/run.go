@@ -1,9 +1,9 @@
-// Package scrape collects raw data about one person's work across an org: their commits on every
+// Package collect gathers raw data about one person's work across an org: their commits on every
 // ref, the pull requests they authored, what each repo is, the issues they worked on and the wiki
 // pages they wrote. It owns the git mirrors and the output; the code host, catalog, issue tracker
 // and wiki are adapters behind the codehost, catalog, tracker and wiki interfaces. Every stage is
 // idempotent and overwrites only its own output; the output contract is docs/data-schema.md.
-package scrape
+package collect
 
 import (
 	"context"

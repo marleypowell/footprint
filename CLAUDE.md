@@ -8,7 +8,7 @@ it into summaries is a separate, later phase. Setup, stages, flags and config ar
   (`config.json`, `data/raw` and `cache/` resolve against the working directory).
 - The code host, catalog, issue tracker and wiki are seams: `internal/codehost`, `internal/catalog`,
   `internal/tracker` and `internal/wiki` each define an interface plus neutral types, with one
-  adapter package beneath (github, backstage, jira, confluence). `internal/scrape` depends on the
+  adapter package beneath (github, backstage, jira, confluence). `internal/collect` depends on the
   interfaces only. Tool knowledge (API calls, annotation names, key formats, merge-message
   conventions, field ids) belongs in an adapter, and wiring belongs in `cmd/footprint/tools.go`.
   The jira and confluence adapters share `internal/atlassian`.
@@ -33,6 +33,6 @@ it into summaries is a separate, later phase. Setup, stages, flags and config ar
 - The `issue_tracker` and `wiki` config sections are optional; code must handle a nil
   `Tools.Tracker` / `Tools.Wiki` (no issue keys, the `issues` / `pages` stage skipped).
 - Verify changes with `go test ./...`. `TestPipeline` runs every stage offline through the in-memory
-  adapters in `internal/scrape/fakes_test.go`, over real git repos.
+  adapters in `internal/collect/fakes_test.go`, over real git repos.
 - Aggregation work starts by reading `docs/data-schema.md`: its role and duplicate rules (`patch_id`,
   squash vs original commits) decide what counts.
