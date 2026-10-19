@@ -63,7 +63,7 @@ func main() {
 	flags.StringVar(&opts.DataDir, "data", "data/raw", "output directory")
 	flags.StringVar(&opts.CacheDir, "cache", "cache", "git mirrors and run state")
 	flags.StringVar(&opts.Only, "only", "", "comma-separated repo names to limit the mirror and commits stages to")
-	flags.StringVar(&opts.Org, "org", "", "init: the org (GitHub) or group (GitLab) to collect from")
+	flags.StringVar(&opts.Org, "org", "", "init: the org to collect from (a GitHub organization)")
 	flags.StringVar(&opts.CodeHost, "code-host", "github", "init: the code host adapter")
 	flags.BoolVar(&opts.Force, "force", false, "init: overwrite an existing config file")
 	flags.Usage = func() {

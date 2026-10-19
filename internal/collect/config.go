@@ -9,7 +9,7 @@ import (
 
 // Config is the personal config file (config.json), written by init from config.example.json.
 type Config struct {
-	Org      string         `json:"org"`   // the org (GitHub) or group (GitLab) to collect from
+	Org      string         `json:"org"`   // the org to collect from (a GitHub organization)
 	Login    string         `json:"login"` // the user's account on the code host
 	Identity IdentityConfig `json:"identity"`
 	// Each tool section names its adapter ("kind") and holds that adapter's settings. The issue

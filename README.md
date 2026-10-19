@@ -22,7 +22,7 @@ gh auth status                                  # repo + read:org scopes, SSO-au
 bin/footprint init --org acme                   # writes config.json for the gh user
 $EDITOR config.json                             # review identity.emails / identity.names
 cp .env.example .env && chmod 600 .env          # then add your Atlassian email and API token
-bin/footprint all                               # ~20 min from cold
+bin/footprint all                               # ~20 min from cold for an org of about 250 repos
 ```
 
 On Windows, in PowerShell (the `.exe` matters: Windows will not run the binary without it):
@@ -35,6 +35,11 @@ notepad config.json
 Copy-Item .env.example .env                     # your user profile is private already; no chmod
 bin/footprint all
 ```
+
+Or install it with `go install github.com/marleypowell/footprint/cmd/footprint@latest` and run
+`footprint` from a directory of your own: `config.json`, `.env`, `data/` and `cache/` all resolve
+against the working directory. Without a clone there is no `.env.example` to copy, so create `.env`
+with `ATLASSIAN_EMAIL` and `ATLASSIAN_API_TOKEN`.
 
 Then open `data/raw/index.json`, and check `data/raw/org/verification.json`:
 `attributed_commits_missing_from_dataset` should be `0`.
@@ -64,7 +69,8 @@ Then open `data/raw/index.json`, and check `data/raw/org/verification.json`:
 
 ## Stages
 
-`footprint [flags] <stage>...` runs stages in the order given, and `all` runs them in this order:
+`footprint [flags] <stage>...` runs stages in the order given, and `all` runs them in this order
+(timings are for an org of about 250 repos):
 
 | stage | does | notes |
 |---|---|---|
@@ -100,7 +106,7 @@ Every stage is idempotent and overwrites its own output. To refresh later, run
 `config.json` is personal and gitignored. `init` generates it from
 [`config.example.json`](config.example.json), which is compiled into the binary:
 
-- `org`, `login`: the org (GitHub org, GitLab group) and your account on the code host.
+- `org`, `login`: the org (a GitHub organization) and your account on the code host.
 - `identity.emails`: every address you have committed with, matched case-insensitively. `init` seeds
   this from the commits the code host already attributes to your account, plus its noreply forms.
 - `identity.names`: full names matched exactly, for commits made with an email the host does not
