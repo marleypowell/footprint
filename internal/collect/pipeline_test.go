@@ -94,7 +94,7 @@ func TestPipeline(t *testing.T) {
 	f.write("b.txt", "two\n")
 	coAuthored := f.commit(other, "add b\n\nCo-authored-by: Jane Doe <JANE.DOE@example.com>")
 	f.write("c.txt", "three\n")
-	committed := f.commit(otherByMe, "add c")
+	committed := f.commit(otherByMe, "Merged in feature/c (pull request #12)\n\nadd c") // completed on an earlier host
 	f.write("d.txt", "four\n")
 	unrelated := f.commit(other, "add d")
 
@@ -225,6 +225,8 @@ func TestPipeline(t *testing.T) {
 	check("co-author roles", got[coAuthored].Roles, []string{"co-author"})
 	check("co-authors", got[coAuthored].CoAuthors, []Person{{Name: "Jane Doe", Email: "JANE.DOE@example.com"}})
 	check("committer-only roles", got[committed].Roles, []string{"committer"})
+	check("migrated PR numbers (earlier host's convention)", got[committed].MigratedPRNumbersInMessage, []int{12})
+	check("migrated PR numbers are not the host's", got[committed].PRNumbersInMessage, []int{})
 	c = got[renamed]
 	check("renamed roles", c.Roles, []string{"author", "committer", "pr-author"})
 	check("renamed in_user_prs", c.InUserPRs, []int{3})
@@ -243,6 +245,7 @@ func TestPipeline(t *testing.T) {
 	c = got[merge]
 	check("merge", c.IsMerge && c.Stats == nil && c.PatchID == nil && len(c.Files) == 0, true)
 	check("merge PR numbers (host convention)", c.PRNumbersInMessage, []int{7})
+	check("merge migrated PR numbers (none: [] not null)", c.MigratedPRNumbersInMessage, []int{})
 	check("merge lands user PR", c.MergeCommitForUserPRs, []int{7})
 
 	// prs.jsonl

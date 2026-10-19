@@ -65,6 +65,18 @@ func (f *fakeHost) PullRequestNumbers(message string) []int {
 	return numbers
 }
 
+// migratedMergeRE finds an earlier host's merges (Bitbucket Cloud style) in imported history.
+var migratedMergeRE = regexp.MustCompile(`(?m)^Merged in \S+ \(pull request #(\d+)\)`)
+
+func (f *fakeHost) MigratedPullRequestNumbers(message string) []int {
+	var numbers []int
+	for _, m := range migratedMergeRE.FindAllStringSubmatch(message, -1) {
+		n, _ := strconv.Atoi(m[1])
+		numbers = append(numbers, n)
+	}
+	return numbers
+}
+
 func (f *fakeHost) RepoPath(ref string) (string, bool) {
 	rest, ok := strings.CutPrefix(ref, "https://code.example/")
 	if !ok {

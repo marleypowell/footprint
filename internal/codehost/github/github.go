@@ -1,5 +1,6 @@
 // Package github is the code host adapter for GitHub: GraphQL and REST calls made with the gh
-// CLI's token, and GitHub's URL, ref and merge-message conventions.
+// CLI's token, and GitHub's URL, ref and merge-message conventions (plus the merge messages of
+// Azure DevOps, whose repos are imported into GitHub with their history).
 package github
 
 import (
@@ -67,9 +68,25 @@ var pullRequestInMessage = []*regexp.Regexp{
 	regexp.MustCompile(`(?m)^Merge pull request #(\d+)\b`), // merge commit
 }
 
+// migratedPullRequestInMessage finds the merges of hosts whose repos are imported into GitHub
+// with their history.
+var migratedPullRequestInMessage = []*regexp.Regexp{
+	regexp.MustCompile(`(?m)^Merged PR (\d+):`), // Azure DevOps: "Merged PR 123: title"
+}
+
 func (h *Host) PullRequestNumbers(message string) []int {
+	return numbersIn(message, pullRequestInMessage)
+}
+
+func (h *Host) MigratedPullRequestNumbers(message string) []int {
+	return numbersIn(message, migratedPullRequestInMessage)
+}
+
+// numbersIn collects the numbers that the patterns' first group captures, sorted and without
+// repeats.
+func numbersIn(message string, patterns []*regexp.Regexp) []int {
 	seen := map[int]bool{}
-	for _, re := range pullRequestInMessage {
+	for _, re := range patterns {
 		for _, m := range re.FindAllStringSubmatch(message, -1) {
 			if n, err := strconv.Atoi(m[1]); err == nil {
 				seen[n] = true

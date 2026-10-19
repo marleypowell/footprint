@@ -74,7 +74,7 @@ squash-merged PRs are present as well as the squash commit.
 | `on_default_branch` | reachable from the repo's default branch (i.e. landed) |
 | `branches`, `pull_request_refs`, `tags` | for commits **not** on the default branch only: which other refs contain it (capped at 50 each; `containing_ref_counts` has the true totals). The lowest PR number is usually the PR that introduced the commit |
 | `pr_numbers_in_message` | change-request numbers the message says it merged, by the code host's conventions (GitHub: `Title (#123)` squash subjects, `Merge pull request #123`) |
-| `azure_devops_pr_numbers_in_message` | pre-migration `Merged PR 12345:` numbers (Azure DevOps; not the current host's PRs) |
+| `migrated_pr_numbers_in_message` | change-request numbers the message says it merged on a host the repo was migrated from, by that host's conventions (GitHub: Azure DevOps's `Merged PR 12345:`); not the current host's PRs |
 | `issue_keys` | issue tracker keys from the message and containing branch names, restricted to the tracker's real projects: the keys in `org/issue_projects.json`, their `previous_keys`, and extras in config (keys of deleted projects that issues were moved out of). The tracker resolves an old key to the issue's current one. Empty without an issue tracker |
 | `patch_id` | `git patch-id --stable`: equal for the same change rebased/cherry-picked onto another base. Null for merges/empty commits |
 | `stats` | `{files, additions, deletions, binary_files}` for the whole commit |

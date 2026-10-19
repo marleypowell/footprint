@@ -9,7 +9,7 @@ import "context"
 //
 // Account, Repos, PullRequests and AttributedCommits call the host's API and deal with its
 // pagination, search caps and rate limits. Adapters authenticate on first use, so Remote,
-// CommitURL, PullRequestNumbers and RepoPath work without credentials.
+// CommitURL, PullRequestNumbers, MigratedPullRequestNumbers and RepoPath work without credentials.
 type Host interface {
 	// Account is the authenticated user.
 	Account(ctx context.Context) (Account, error)
@@ -30,6 +30,10 @@ type Host interface {
 	// PullRequestNumbers finds the change requests a commit message says it merged, by the host's
 	// merge and squash conventions.
 	PullRequestNumbers(message string) []int
+	// MigratedPullRequestNumbers finds the change requests a commit message says it merged on a
+	// host the repository was migrated from: history imported with a repository keeps that host's
+	// merge messages, and their numbers are not this host's.
+	MigratedPullRequestNumbers(message string) []int
 	// RepoPath extracts the repository path ("owner/name") that a reference names: an owner/name
 	// slug, or a web or clone URL on this host.
 	RepoPath(ref string) (path string, ok bool)

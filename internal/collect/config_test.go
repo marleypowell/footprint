@@ -115,9 +115,3 @@ func TestWriteUnderRefusesEscapes(t *testing.T) {
 		t.Errorf("normal path not written: %v", err)
 	}
 }
-
-func TestAzureDevOpsPRNumbers(t *testing.T) {
-	if got := adoPRNumbersInMessage("Merged PR 44946: fix\n\nMerged PR 12: older"); !reflect.DeepEqual(got, []int{12, 44946}) {
-		t.Errorf("got %v", got)
-	}
-}

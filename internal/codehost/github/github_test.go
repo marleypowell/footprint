@@ -38,6 +38,25 @@ func TestPullRequestNumbers(t *testing.T) {
 	}
 }
 
+func TestMigratedPullRequestNumbers(t *testing.T) {
+	h := testHost(t)
+	tests := []struct {
+		message string
+		want    []int
+	}{
+		{"Merged PR 44946: fix\n\nMerged PR 12: older", []int{12, 44946}},
+		{"Merged PR 44946: fix\n\nRelated work items: #1234", []int{44946}},
+		{"see Merged PR 7: in passing", []int{}},
+		{"feat: add timeout (#50)", []int{}},
+		{"Merge pull request #123 from acme/jdoe/x", []int{}},
+	}
+	for _, tt := range tests {
+		if got := h.MigratedPullRequestNumbers(tt.message); !reflect.DeepEqual(got, tt.want) {
+			t.Errorf("MigratedPullRequestNumbers(%q) = %v, want %v", tt.message, got, tt.want)
+		}
+	}
+}
+
 func TestRepoPath(t *testing.T) {
 	h := testHost(t)
 	tests := []struct {

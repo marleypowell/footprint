@@ -28,33 +28,33 @@ const (
 
 // Commit is one line of <data>/repos/<repo>/commits.jsonl. docs/data-schema.md defines the fields.
 type Commit struct {
-	Repo                          string       `json:"repo"`
-	SHA                           string       `json:"sha"`
-	URL                           string       `json:"url"`
-	Roles                         []string     `json:"roles"`
-	MatchedBy                     MatchedBy    `json:"matched_by"`
-	InUserPRs                     []int        `json:"in_user_prs"`
-	MergeCommitForUserPRs         []int        `json:"merge_commit_for_user_prs"`
-	Author                        Signature    `json:"author"`
-	Committer                     Signature    `json:"committer"`
-	CoAuthors                     []Person     `json:"co_authors"`
-	Subject                       string       `json:"subject"`
-	Body                          string       `json:"body"`
-	Message                       string       `json:"message"`
-	Parents                       []string     `json:"parents"`
-	IsMerge                       bool         `json:"is_merge"`
-	OnDefaultBranch               bool         `json:"on_default_branch"`
-	PRNumbersInMessage            []int        `json:"pr_numbers_in_message"`
-	AzureDevOpsPRNumbersInMessage []int        `json:"azure_devops_pr_numbers_in_message"`
-	IssueKeys                     []string     `json:"issue_keys"`
-	Stats                         *CommitStats `json:"stats"`
-	Files                         []FileChange `json:"files"`
-	FilesTruncated                bool         `json:"files_truncated"`
-	PatchID                       *string      `json:"patch_id"`
-	Branches                      []string     `json:"branches"`
-	PullRequestRefs               []int        `json:"pull_request_refs"`
-	Tags                          []string     `json:"tags"`
-	ContainingRefCounts           RefCounts    `json:"containing_ref_counts"`
+	Repo                       string       `json:"repo"`
+	SHA                        string       `json:"sha"`
+	URL                        string       `json:"url"`
+	Roles                      []string     `json:"roles"`
+	MatchedBy                  MatchedBy    `json:"matched_by"`
+	InUserPRs                  []int        `json:"in_user_prs"`
+	MergeCommitForUserPRs      []int        `json:"merge_commit_for_user_prs"`
+	Author                     Signature    `json:"author"`
+	Committer                  Signature    `json:"committer"`
+	CoAuthors                  []Person     `json:"co_authors"`
+	Subject                    string       `json:"subject"`
+	Body                       string       `json:"body"`
+	Message                    string       `json:"message"`
+	Parents                    []string     `json:"parents"`
+	IsMerge                    bool         `json:"is_merge"`
+	OnDefaultBranch            bool         `json:"on_default_branch"`
+	PRNumbersInMessage         []int        `json:"pr_numbers_in_message"`
+	MigratedPRNumbersInMessage []int        `json:"migrated_pr_numbers_in_message"`
+	IssueKeys                  []string     `json:"issue_keys"`
+	Stats                      *CommitStats `json:"stats"`
+	Files                      []FileChange `json:"files"`
+	FilesTruncated             bool         `json:"files_truncated"`
+	PatchID                    *string      `json:"patch_id"`
+	Branches                   []string     `json:"branches"`
+	PullRequestRefs            []int        `json:"pull_request_refs"`
+	Tags                       []string     `json:"tags"`
+	ContainingRefCounts        RefCounts    `json:"containing_ref_counts"`
 }
 
 // MatchedBy records, per role, how the user was matched ("email", "name", or "authored_pr").
@@ -248,28 +248,28 @@ func (h *harness) extractCommits(ctx context.Context, repo Repo, issueKeys track
 			}
 		}
 		rows = append(rows, Commit{
-			Repo:                          repo.Name,
-			SHA:                           sha,
-			URL:                           h.tools.Host.CommitURL(repo, sha),
-			Roles:                         matched.roles(),
-			MatchedBy:                     matched,
-			InUserPRs:                     sortedInts(inMyPRs[sha]),
-			MergeCommitForUserPRs:         sortedInts(landsMyPRs[sha]),
-			Author:                        d.author,
-			Committer:                     d.committer,
-			CoAuthors:                     coAuthors,
-			Subject:                       d.subject,
-			Body:                          d.body,
-			Message:                       d.message,
-			Parents:                       d.parents,
-			IsMerge:                       isMerge,
-			OnDefaultBranch:               onDefault[sha],
-			PRNumbersInMessage:            orEmpty(h.tools.Host.PullRequestNumbers(d.message)),
-			AzureDevOpsPRNumbersInMessage: adoPRNumbersInMessage(d.message),
-			IssueKeys:                     issueKeys(d.message),
-			Stats:                         stats,
-			Files:                         d.files[:min(len(d.files), maxFilesPerCommit)],
-			FilesTruncated:                len(d.files) > maxFilesPerCommit,
+			Repo:                       repo.Name,
+			SHA:                        sha,
+			URL:                        h.tools.Host.CommitURL(repo, sha),
+			Roles:                      matched.roles(),
+			MatchedBy:                  matched,
+			InUserPRs:                  sortedInts(inMyPRs[sha]),
+			MergeCommitForUserPRs:      sortedInts(landsMyPRs[sha]),
+			Author:                     d.author,
+			Committer:                  d.committer,
+			CoAuthors:                  coAuthors,
+			Subject:                    d.subject,
+			Body:                       d.body,
+			Message:                    d.message,
+			Parents:                    d.parents,
+			IsMerge:                    isMerge,
+			OnDefaultBranch:            onDefault[sha],
+			PRNumbersInMessage:         orEmpty(h.tools.Host.PullRequestNumbers(d.message)),
+			MigratedPRNumbersInMessage: orEmpty(h.tools.Host.MigratedPullRequestNumbers(d.message)),
+			IssueKeys:                  issueKeys(d.message),
+			Stats:                      stats,
+			Files:                      d.files[:min(len(d.files), maxFilesPerCommit)],
+			FilesTruncated:             len(d.files) > maxFilesPerCommit,
 		})
 	}
 
