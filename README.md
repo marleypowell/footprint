@@ -174,6 +174,9 @@ go test ./...    # unit tests, plus a full offline pipeline test over real git r
 go vet ./...
 ```
 
+CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) runs the tests with `-race` on Go 1.24
+and the latest Go, plus gofmt, staticcheck, govulncheck, and `go vet` for macOS and Windows.
+
 ```
 cmd/footprint/          CLI entry point; tools.go wires the adapters
 internal/collect/       the stages and git mirroring: the core, tool-neutral
