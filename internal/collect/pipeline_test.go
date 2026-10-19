@@ -227,6 +227,7 @@ func TestPipeline(t *testing.T) {
 	check("authored matched_by", c.MatchedBy, MatchedBy{Author: "email", Committer: "email"})
 	check("authored on default", c.OnDefaultBranch, true)
 	check("authored issue keys (tracker)", c.IssueKeys, []string{"ENG-12"})
+	check("authored branch-only issue keys (none: on the default branch)", c.BranchIssueKeys, []string{})
 	check("authored stats", *c.Stats, CommitStats{Files: 1, Additions: 1})
 	check("authored url (host convention)", c.URL, "https://code.example/org/repo/-/commit/"+authored)
 	check("co-author roles", got[coAuthored].Roles, []string{"co-author"})
@@ -242,6 +243,7 @@ func TestPipeline(t *testing.T) {
 	check("renamed PR refs", c.PullRequestRefs, []int{3})
 	check("renamed tags", c.Tags, []string{"v1"})
 	check("renamed issue keys (from branch)", c.IssueKeys, []string{"ENG-34"})
+	check("renamed branch-only issue keys", c.BranchIssueKeys, []string{"ENG-34"})
 	check("rename", c.Files[0].Path+" <- "+c.Files[0].OldPath+" "+c.Files[0].Status, "renamed.txt <- a.txt R")
 	if c.PatchID == nil || got[picked].PatchID == nil || *c.PatchID != *got[picked].PatchID {
 		t.Error("a cherry-picked copy should share the original's patch_id")

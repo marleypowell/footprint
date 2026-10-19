@@ -47,6 +47,7 @@ type Commit struct {
 	PRNumbersInMessage         []int        `json:"pr_numbers_in_message"`
 	MigratedPRNumbersInMessage []int        `json:"migrated_pr_numbers_in_message"`
 	IssueKeys                  []string     `json:"issue_keys"`
+	BranchIssueKeys            []string     `json:"branch_issue_keys"` // those of issue_keys only branch names supply
 	Stats                      *CommitStats `json:"stats"`
 	Files                      []FileChange `json:"files"`
 	FilesTruncated             bool         `json:"files_truncated"`
@@ -267,6 +268,7 @@ func (h *harness) extractCommits(ctx context.Context, repo Repo, issueKeys track
 			PRNumbersInMessage:         orEmpty(h.tools.Host.PullRequestNumbers(d.message)),
 			MigratedPRNumbersInMessage: orEmpty(h.tools.Host.MigratedPullRequestNumbers(d.message)),
 			IssueKeys:                  issueKeys(d.message),
+			BranchIssueKeys:            []string{},
 			Stats:                      stats,
 			Files:                      d.files[:min(len(d.files), maxFilesPerCommit)],
 			FilesTruncated:             len(d.files) > maxFilesPerCommit,
@@ -298,7 +300,8 @@ func (h *harness) extractCommits(ctx context.Context, repo Repo, issueKeys track
 		}
 		refs := classifyRefs(containment[r.SHA])
 		r.Branches, r.PullRequestRefs, r.Tags, r.ContainingRefCounts = refs.branches, refs.prs, refs.tags, refs.counts
-		r.IssueKeys = mergeSorted(r.IssueKeys, issueKeys(strings.Join(refs.branches, " ")))
+		fromBranches := issueKeys(strings.Join(refs.branches, " "))
+		r.IssueKeys, r.BranchIssueKeys = mergeSorted(r.IssueKeys, fromBranches), subtractSorted(fromBranches, r.IssueKeys)
 	}
 	sort.Slice(rows, func(i, j int) bool {
 		ti, tj := parseTime(rows[i].Author.Date), parseTime(rows[j].Author.Date)
@@ -495,6 +498,18 @@ func sortedInts(s []int) []int {
 	out := slices.Clone(s)
 	sort.Ints(out)
 	return orEmpty(out)
+}
+
+// subtractSorted is the strings of a that are not in b, sorted.
+func subtractSorted(a, b []string) []string {
+	set := map[string]bool{}
+	for _, s := range a {
+		set[s] = true
+	}
+	for _, s := range b {
+		delete(set, s)
+	}
+	return sortedKeys(set)
 }
 
 func mergeSorted(a, b []string) []string {

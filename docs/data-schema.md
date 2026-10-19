@@ -77,6 +77,7 @@ squash-merged PRs are present as well as the squash commit.
 | `pr_numbers_in_message` | change-request numbers the message says it merged, by the code host's conventions (GitHub: `Title (#123)` squash subjects, `Merge pull request #123`) |
 | `migrated_pr_numbers_in_message` | change-request numbers the message says it merged on a host the repo was migrated from, by that host's conventions (GitHub: Azure DevOps's `Merged PR 12345:`); not the current host's PRs |
 | `issue_keys` | issue tracker keys from the message and containing branch names, restricted to the tracker's real projects: the keys in `org/issue_projects.json`, their `previous_keys`, and extras in config (keys of deleted projects that issues were moved out of). The tracker resolves an old key to the issue's current one. Empty without an issue tracker |
+| `branch_issue_keys` | the keys in `issue_keys` that only branch names supply, not the message. A branch holds every older commit not yet on the default branch, so these can name later work (an issue created after the commit) |
 | `patch_id` | `git patch-id --stable`: equal for the same change rebased/cherry-picked onto another base. Null for merges/empty commits |
 | `stats` | `{files, additions, deletions, binary_files}` for the whole commit |
 | `files` | `[{path, old_path?, status, similarity?, additions, deletions, binary}]`; status is A/M/D/R/T. Capped at 5000 (`files_truncated`) |
