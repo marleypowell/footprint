@@ -192,6 +192,11 @@ bin/footprint check data/drafts/review.md             # citations and numbers in
   career framework to map evidence to), and `items/<id>.md` (impact or corrections for one item,
   which join its pack).
 
+In Claude Code, the `footprint` skill ([`.claude/skills/footprint/`](.claude/skills/footprint/SKILL.md))
+runs these steps to answer questions about your work, and to write a CV or LinkedIn profile, a
+performance review, a promotion case, or an offboarding snapshot. Its steps only use the CLI and
+files, so another agent can follow `SKILL.md` too.
+
 | directory | written by | |
 |---|---|---|
 | `data/raw/` | the collection stages | the dataset |
@@ -225,6 +230,7 @@ internal/logx/          progress logging
 internal/facts/         aggregation: the counting rules, work items, packs, note states, check
 docs/data-schema.md     the output contract (compiled in; written to data/raw/README.md)
 docs/facts-schema.md    the facts contract (compiled in; written to data/facts/README.md)
+.claude/skills/footprint/  the skill an agent follows to use the data
 config.example.json     config template (compiled in; init copies its mirror settings and tool kinds)
 assets.go               embeds the three compiled-in files
 data/raw/               output: personal, gitignored (start at index.json)
