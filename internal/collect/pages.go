@@ -15,6 +15,7 @@ type PageRecord struct {
 	wiki.Page
 	Roles        []string `json:"roles"`
 	UserVersions int      `json:"user_versions"`
+	IssueKeys    []string `json:"issue_keys"` // issue tracker keys the title and body name, as for commits
 }
 
 // pageRoles are the ways wiki content can involve the user, in the order records list them.
@@ -23,7 +24,8 @@ type PageRecord struct {
 var pageRoles = []string{"creator", "owner", "editor", "contributor"}
 
 // pages loads everything the user created or edited in the wiki, then refreshes its part of
-// index.json. With no wiki in the config it does nothing.
+// index.json. With no wiki in the config it does nothing. With an issue tracker it lists the
+// tracker's projects, to recognise the issue keys pages name.
 func (h *harness) pages(ctx context.Context) error {
 	w := h.tools.Wiki
 	if w == nil {
@@ -35,13 +37,17 @@ func (h *harness) pages(ctx context.Context) error {
 		return err
 	}
 	h.checkAccount("pages", account.Name, account.Email)
+	issueKeys, err := h.issueKeys(ctx)
+	if err != nil {
+		return err
+	}
 	pages, err := w.Pages(ctx, account)
 	if err != nil {
 		return err
 	}
 	bySpace := map[string][]PageRecord{}
 	for _, p := range pages {
-		rec := PageRecord{Page: p}
+		rec := PageRecord{Page: p, IssueKeys: issueKeys(p.Title, deref(p.Body))}
 		rec.Roles, rec.UserVersions = pageInvolvement(&rec.Page, account.ID)
 		bySpace[p.Space.Key] = append(bySpace[p.Space.Key], rec)
 	}

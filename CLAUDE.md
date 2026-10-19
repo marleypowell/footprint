@@ -24,11 +24,12 @@ it into summaries is a separate, later phase. Setup, stages, flags and config ar
   `commits projects verify issues`. For issues, `data/raw/issues/unresolved.json` should hold no
   `failed` entries (re-run `issues`), and its `not_found` keys should be typos or deleted issues.
 - The Jira and Confluence adapters need `ATLASSIAN_EMAIL` and `ATLASSIAN_API_TOKEN` (or per-product
-  `JIRA_API_TOKEN` / `CONFLUENCE_API_TOKEN`): `issues` and `pages`, and also `prs`, `commits` and
-  `projects`, which list the Jira projects to recognise issue keys. The binary reads them from the
-  repo's git-ignored `.env` (template: `.env.example`) or the environment. Only the user can create
-  the token. Never print `.env` values or put them in commands; the binary logs variable names only.
-  The Atlassian connector in Claude Code is for exploring and spot checks, not for collecting.
+  `JIRA_API_TOKEN` / `CONFLUENCE_API_TOKEN`): `issues` and `pages` load from them, and `prs`,
+  `commits`, `projects` and `pages` list the Jira projects to recognise issue keys. The binary reads
+  them from the repo's git-ignored `.env` (template: `.env.example`) or the environment. Only the
+  user can create the token. Never print `.env` values or put them in commands; the binary logs
+  variable names only. The Atlassian connector in Claude Code is for exploring and spot checks, not
+  for collecting.
 - `data/` (private-repo content about one person) and `cache/` (~9 GB of mirrors) stay untracked.
 - The `issue_tracker` and `wiki` config sections are optional; code must handle a nil
   `Tools.Tracker` / `Tools.Wiki` (no issue keys, the `issues` / `pages` stage skipped).

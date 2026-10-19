@@ -219,6 +219,7 @@ are not content here. There is one file per space, oldest first.
 | `id`, `type`, `subtype`, `status`, `title`, `url` | the content; `type` is the wiki's own (Confluence: `page`, `blogpost`, `whiteboard`, `database`, `folder`, `embed`), `subtype` e.g. `live` for a Confluence live doc |
 | `roles` | subset of `creator`, `owner`, `editor` (saved a version after the first); or `contributor` alone when the history kept does not show the user (a whiteboard keeps only its current version), because the wiki's search says they created or edited it |
 | `user_versions` | how many versions the user saved |
+| `issue_keys` | issue tracker keys the title and body name (Confluence: Jira macros and issue links), restricted to the tracker's real projects as for commits; empty without an issue tracker |
 | `space`, `ancestors` | where it lives: `{key, name}`, and the page tree above it as `{id, title}`, root first |
 | `labels` | the page's labels |
 | `created_at`, `created_by`, `owner`, `updated_at`, `updated_by` | people are `{id, name}` |

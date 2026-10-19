@@ -160,7 +160,7 @@ func TestPipeline(t *testing.T) {
 	engSpace := wiki.Space{Key: "eng", Name: "Engineering"}
 	notes := &fakeWiki{account: wiki.Account{ID: "u-jane", Name: "Jane Doe"}, pages: []wiki.Page{
 		{ID: "9a2d-design", Type: "page", Title: "Design notes", Space: engSpace, CreatedAt: "2024-03-01T00:00:00+00:00",
-			CreatedBy: wikiJane, Body: ptr("# Design"), Versions: []wiki.Version{{Number: 1, Author: wikiJane}, {Number: 2, Author: wikiOther}}},
+			CreatedBy: wikiJane, Body: ptr("# Design\n\nFor [jira: key=ENG-42]."), Versions: []wiki.Version{{Number: 1, Author: wikiJane}, {Number: 2, Author: wikiOther}}},
 		{ID: "6f1c-team", Type: "page", Title: "Team wiki", Space: engSpace, CreatedAt: "2023-05-01T00:00:00+00:00", CreatedBy: wikiOther,
 			Versions: []wiki.Version{{Number: 1, Author: wikiOther}, {Number: 2, Author: wikiJane}, {Number: 3, Author: wikiJane}}},
 		{ID: "b7e0-roadmap", Type: "database", Title: "Roadmap", Space: wiki.Space{Key: "product", Name: "Product"},
@@ -360,6 +360,7 @@ func TestPipeline(t *testing.T) {
 	check("edited page", []any{pages[0].Title, pages[0].Roles, pages[0].UserVersions}, []any{"Team wiki", []string{"editor"}, 2})
 	check("created page", []any{pages[1].Title, pages[1].Roles, pages[1].UserVersions}, []any{"Design notes", []string{"creator"}, 1})
 	check("versions by_user", []bool{pages[1].Versions[0].ByUser, pages[1].Versions[1].ByUser}, []bool{true, false})
+	check("page issue keys (title and body)", [][]string{pages[0].IssueKeys, pages[1].IssueKeys}, [][]string{{}, {"ENG-42"}})
 	product, err := readJSONL[PageRecord](filepath.Join(raw, "wiki", "product.jsonl"))
 	if err != nil || len(product) != 2 {
 		t.Fatalf("product.jsonl: %d pages, %v", len(product), err)

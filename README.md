@@ -85,9 +85,9 @@ Then open `data/raw/index.json`, and check `data/raw/org/verification.json`:
 | `issues` | issues ever assigned to you, or named in your commits and PRs, with comments, history and worklogs, plus the stories, epics and initiatives above them | Jira: one request per issue, a few minutes for thousands; skipped without an `issue_tracker` section |
 | `pages` | wiki content you created or edited, with versions and the body as Markdown | Confluence: CQL search, then each page; skipped without a `wiki` section |
 
-With an `issue_tracker` section, `prs`, `commits` and `projects` list the tracker's projects (once
-per run) to recognise issue keys, so they need its token too: without the Atlassian token, `all`
-stops at `prs`. `issues` and `pages` run last and refresh their own parts of `index.json`.
+With an `issue_tracker` section, `prs`, `commits`, `projects` and `pages` list the tracker's projects
+(once per run) to recognise issue keys, so they need its token too: without the Atlassian token,
+`all` stops at `prs`. `issues` and `pages` run last and refresh their own parts of `index.json`.
 
 Every stage is idempotent and overwrites its own output. To refresh later, run
 `mirror prs commits projects verify issues pages`. Flags can go anywhere on the command line:
