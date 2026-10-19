@@ -25,6 +25,17 @@ cp .env.example .env && chmod 600 .env          # then add your Atlassian email 
 bin/footprint all                               # ~20 min from cold
 ```
 
+On Windows, in PowerShell (the `.exe` matters: Windows will not run the binary without it):
+
+```powershell
+go build -o bin/footprint.exe ./cmd/footprint
+gh auth status
+bin/footprint init --org acme
+notepad config.json
+Copy-Item .env.example .env                     # your user profile is private already; no chmod
+bin/footprint all
+```
+
 Then open `data/raw/index.json`, and check `data/raw/org/verification.json`:
 `attributed_commits_missing_from_dataset` should be `0`.
 

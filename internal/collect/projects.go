@@ -496,8 +496,12 @@ func (h *harness) projectDocs(ctx context.Context, repo Repo, catalogDirs map[st
 			return nil, nil, err
 		}
 		keep := blob[:min(len(blob), maxDocBytes)]
-		if err := writeUnder(outDir, file, []byte(strings.ToValidUTF8(string(keep), "�"))); err != nil {
+		written, err := writeUnder(outDir, file, []byte(strings.ToValidUTF8(string(keep), "�")))
+		if err != nil {
 			return nil, nil, err
+		}
+		if !written {
+			continue
 		}
 		docs = append(docs, Doc{Path: file, SavedAs: "docs/" + file, Bytes: len(blob), Truncated: len(blob) > maxDocBytes})
 	}

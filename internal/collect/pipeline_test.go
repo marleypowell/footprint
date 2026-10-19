@@ -414,6 +414,18 @@ func TestNaturalCompare(t *testing.T) {
 	}
 }
 
+func TestFileName(t *testing.T) {
+	for key, want := range map[string]string{
+		"ENG": "ENG", "~557058:ab-c": "~557058_ab-c", "": "_", "..": "_..", "a/../b": "a_.._b",
+		"CON": "_CON", "aux": "_aux", "COM1": "_COM1", "LPT9": "_LPT9", "NUL.x": "_NUL.x",
+		"CONF": "CONF", "COM": "COM", "COM10": "COM10", "PRNT": "PRNT",
+	} {
+		if got := fileName(key); got != want {
+			t.Errorf("fileName(%q) = %q, want %q", key, got, want)
+		}
+	}
+}
+
 // Without a wiki in the config, the pages stage does nothing.
 func TestPagesWithoutWiki(t *testing.T) {
 	raw := t.TempDir()

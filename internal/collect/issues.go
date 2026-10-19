@@ -287,12 +287,17 @@ func (h *harness) checkAccount(stage, name, email string) {
 	}
 }
 
-var unsafeFileChars = regexp.MustCompile(`[^A-Za-z0-9_.~-]`)
+var (
+	unsafeFileChars = regexp.MustCompile(`[^A-Za-z0-9_.~-]`)
+	// Windows device names, reserved whatever the extension.
+	reservedFileName = regexp.MustCompile(`(?i)^(con|prn|aux|nul|com[0-9]|lpt[0-9])(\.|$)`)
+)
 
-// fileName turns a project or space key into a file name that stays inside its directory.
+// fileName turns a project or space key into a file name that stays inside its directory, and
+// is the same, and valid, on every OS.
 func fileName(key string) string {
 	name := unsafeFileChars.ReplaceAllString(key, "_")
-	if name == "" || strings.HasPrefix(name, ".") {
+	if name == "" || strings.HasPrefix(name, ".") || reservedFileName.MatchString(name) {
 		name = "_" + name
 	}
 	return name

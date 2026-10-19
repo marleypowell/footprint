@@ -52,7 +52,7 @@ func (h *harness) catalog(ctx context.Context) error {
 			return fmt.Errorf("%s: %w", r.Name, err)
 		}
 		for _, f := range res.Files {
-			if err := writeUnder(filepath.Join(dir, "files", r.Name), f.Path, f.Content); err != nil {
+			if _, err := writeUnder(filepath.Join(dir, "files", r.Name), f.Path, f.Content); err != nil {
 				return err
 			}
 		}

@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -98,15 +99,19 @@ func TestInit(t *testing.T) {
 
 func TestWriteUnderRefusesEscapes(t *testing.T) {
 	base := filepath.Join(t.TempDir(), "base")
-	for _, p := range []string{"../escape.txt", "/tmp/absolute.txt", "a/../../b.txt"} {
-		if err := writeUnder(base, p, []byte("x")); err != nil {
-			t.Errorf("%q: %v", p, err)
+	escapes := []string{"../escape.txt", "/tmp/absolute.txt", "a/../../b.txt"}
+	if runtime.GOOS == "windows" { // ordinary file names elsewhere
+		escapes = append(escapes, `..\escape.txt`, `a/..\..\b.txt`, "C:/absolute.txt", "a:stream.txt", "aux/x.txt", "nul.yaml")
+	}
+	for _, p := range escapes {
+		if written, err := writeUnder(base, p, []byte("x")); written || err != nil {
+			t.Errorf("%q: written %v, %v", p, written, err)
 		}
 	}
 	if entries, _ := os.ReadDir(filepath.Dir(base)); len(entries) != 0 {
 		t.Fatalf("refused paths still wrote %v", entries)
 	}
-	if err := writeUnder(base, "docs/index.md", []byte("x")); err != nil || !fileExists(filepath.Join(base, "docs", "index.md")) {
+	if written, err := writeUnder(base, "docs/index.md", []byte("x")); !written || err != nil || !fileExists(filepath.Join(base, "docs", "index.md")) {
 		t.Errorf("normal path not written: %v", err)
 	}
 }

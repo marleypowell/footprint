@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -59,8 +60,8 @@ func TestLoad(t *testing.T) {
 	if TooOpen(path) {
 		t.Error("0600 is private")
 	}
-	if err := os.Chmod(path, 0o644); err != nil || !TooOpen(path) {
-		t.Error("0644 should be flagged")
+	if err := os.Chmod(path, 0o644); err != nil || TooOpen(path) == (runtime.GOOS == "windows") {
+		t.Error("0644 should be flagged, except on Windows")
 	}
 	if set, err := Load(filepath.Join(t.TempDir(), "absent")); set != nil || err != nil {
 		t.Errorf("a missing file loads nothing: %v %v", set, err)

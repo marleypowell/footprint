@@ -9,8 +9,6 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
-	"slices"
-	"strings"
 )
 
 // writeFileAtomic writes via a temp file and rename, so readers never see a half-written file.
@@ -89,15 +87,17 @@ func readJSONL[T any](path string) ([]T, error) {
 }
 
 // writeUnder writes a repo-controlled relative path below base, refusing anything that would
-// escape it.
-func writeUnder(base, relpath string, data []byte) error {
-	if strings.HasPrefix(relpath, "/") || slices.Contains(strings.Split(relpath, "/"), "..") {
+// escape it. On Windows that includes git names holding `\` or `:`, or a device name such as
+// `aux`, which Windows reads as a separator, a stream or a device. written is false when refused.
+func writeUnder(base, relpath string, data []byte) (written bool, err error) {
+	rel := filepath.FromSlash(relpath)
+	if !filepath.IsLocal(rel) {
 		logf("refusing to write suspicious path %q under %s", relpath, base)
-		return nil
+		return false, nil
 	}
-	path := filepath.Join(base, filepath.FromSlash(relpath))
+	path := filepath.Join(base, rel)
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return err
+		return false, err
 	}
-	return os.WriteFile(path, data, 0o644)
+	return true, os.WriteFile(path, data, 0o644)
 }

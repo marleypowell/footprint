@@ -8,6 +8,7 @@ import (
 	"io/fs"
 	"os"
 	"regexp"
+	"runtime"
 	"strings"
 )
 
@@ -40,8 +41,12 @@ func Load(path string) ([]string, error) {
 	return set, nil
 }
 
-// TooOpen reports whether the file can be read by anyone but its owner.
+// TooOpen reports whether the file can be read by anyone but its owner. It is always false on
+// Windows, where access is set by ACLs that Go's permission bits do not show.
 func TooOpen(path string) bool {
+	if runtime.GOOS == "windows" {
+		return false
+	}
 	info, err := os.Stat(path)
 	return err == nil && info.Mode().Perm()&0o077 != 0
 }

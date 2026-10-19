@@ -42,6 +42,13 @@ wiki/
   <space>.jsonl               wiki content the user created or edited (one per line, oldest first)
 ```
 
+Project and space keys become file names with anything outside `A-Z a-z 0-9 _ . ~ -` replaced by
+`_`, and a `_` in front of names starting with `.` and of Windows device names (`CON`, `AUX`,
+`NUL`, `PRN`, `COM1`-`COM9`, `LPT1`-`LPT9`), so `CON` is `issues/_CON.jsonl` on every OS. The
+records' own `key` fields are unchanged. A repo file whose path cannot be written safely on the OS
+doing the run (on Windows: a `\`, `:` or device name in it) is skipped with a log line: it is
+missing from `catalog/files/`, and a skipped doc is missing from `docs/` and `project.json`.
+
 ## commits.jsonl
 
 A commit is included if the user is its **author** or **committer**, if a `Co-authored-by:` trailer

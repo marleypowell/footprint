@@ -1,0 +1,3 @@
+# Keep LF everywhere: the embedded docs/data-schema.md and config.example.json are copied
+# into the output as-is, so a CRLF checkout (Git for Windows' default) would change the output.
+* text=auto eol=lf
