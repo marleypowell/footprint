@@ -374,7 +374,13 @@ func TestCheck(t *testing.T) {
 			"Angular 9, C# 12, Node 18 and Windows 11.\n\n- Python 3\n")
 	}
 	check(t, "versions and names are not counts", run(head+names.String()), []string(nil))
-	counts := run(head + "\n## Summary\n\nMerged 12 PRs. Led 4 people, and I wrote 3 docs.\n")
+	for _, f := range run(head + "\n## Summary\n\nI upgraded the monorepo to\nAngular 15 and the library too.\n" +
+		"Office 365 tenants could connect.\n\n- Angular 15 upgrade for the library.\n") {
+		if strings.Contains(f, "no counts") {
+			t.Errorf("a name that opens a line or sentence was flagged: %s", f)
+		}
+	}
+	counts := run(head + "\n## Summary\n\nMerged 12 PRs. Led 4 people, and I wrote 3 docs.\nI rebuilt Storybook 12 times.\n")
 	for _, n := range []string{`"12"`, `"4"`, `"3"`} {
 		if !strings.Contains(strings.Join(counts, "\n"), n+": a note carries no counts") {
 			t.Errorf("no count warning for %s:\n%s", n, strings.Join(counts, "\n"))

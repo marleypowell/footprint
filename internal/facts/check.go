@@ -267,7 +267,11 @@ func (c *checker) paragraph(lines []string, idx []int) {
 		rest = notCountRE.ReplaceAllString(rest, " ")
 		numbers = append(numbers, pending{i, rest})
 	}
-	for _, n := range numbers {
+	for ni, n := range numbers {
+		prev := "" // the line before, whose end says whether this one starts a sentence
+		if ni > 0 {
+			prev = strings.TrimSpace(numbers[ni-1].text)
+		}
 		for _, loc := range numberRE.FindAllStringSubmatchIndex(n.text, -1) {
 			start, end := loc[0], loc[1]
 			numEnd := loc[5]
@@ -290,7 +294,7 @@ func (c *checker) paragraph(lines []string, idx []int) {
 			if loc[10] >= 0 {
 				suffix = n.text[loc[10]:loc[11]]
 			}
-			if suffix == "" && loc[2] == loc[3] && partOfName(n.text[:start], n.text[end:]) {
+			if suffix == "" && loc[2] == loc[3] && partOfName(strings.TrimLeft(prev+" "+n.text[:start], " "), n.text[end:]) {
 				continue
 			}
 			got := strings.TrimSpace(n.text[start:end])
@@ -314,16 +318,23 @@ func (c *checker) paragraph(lines []string, idx []int) {
 var (
 	versionWords = map[string]bool{"version": true, "release": true, "level": true, "phase": true, "sprint": true, "tier": true}
 	listMarkerRE = regexp.MustCompile(`^([-*+>]|\d+[.)])$`)
-	countNounRE  = regexp.MustCompile(`^([a-z]|[A-Za-z]+s\b)`) // what a number could count: "12 PRs", "4 people"
+	// what a number counts, whatever precedes it: "rebuilt Storybook 12 times"
+	countUnitRE = regexp.MustCompile(`^(times|days|weeks|months|years|hours|minutes|people|engineers|developers|teammates|PRs|commits|tickets|repos)\b`)
+	// a sentence opening with a verb ("Merged 12 PRs", "Led 4 people", "Building 7 services"), as
+	// notes are written: past tense, or an irregular verb
+	verbRE = regexp.MustCompile(`(?i)^([a-z]+(ed|ing)|led|ran|wrote|built|made|sent|took|did|got|set|found|held|kept|taught|drove|spent|gave|brought|chose|cut|put|read|won)$`)
 )
 
-// partOfName says whether a number, between before and after on its line, belongs to a name or a
-// version rather than counting something: Angular 15, .NET 8, Office 365, HTTP 429, version 2. The
-// word before it names something when it has a capital letter. At the start of a sentence every
-// word has one, so there the number must also not be followed by what it could count ("Merged 12
-// PRs", "Led 4 people").
+// partOfName says whether a number, with the text before it (the line before too, so a wrapped line
+// reads as one sentence) and after it, belongs to a name or a version rather than counting
+// something: Angular 15, .NET 8, Office 365, HTTP 429, version 2. The word before it names something
+// when it has a capital letter. At the start of a sentence every word has one, so there it is a
+// name unless it is a verb.
 func partOfName(before, after string) bool {
 	if !strings.HasSuffix(before, " ") || strings.HasSuffix(before, "  ") {
+		return false
+	}
+	if countUnitRE.MatchString(strings.TrimLeft(after, " ")) {
 		return false
 	}
 	before = strings.TrimSuffix(before, " ")
@@ -339,7 +350,7 @@ func partOfName(before, after string) bool {
 	if rest != "" && !strings.ContainsAny(rest[len(rest)-1:], ".!?:;") && !listMarkerRE.MatchString(rest) {
 		return true // within a sentence
 	}
-	return !countNounRE.MatchString(strings.TrimLeft(after, " "))
+	return !verbRE.MatchString(bare)
 }
 
 func parseCount(s string) (float64, bool) {
