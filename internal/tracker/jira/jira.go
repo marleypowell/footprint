@@ -1,8 +1,10 @@
-// Package jira is the issue tracker adapter for Jira: PROJ-123 keys of known projects, found
-// case-insensitively in commit messages, branch names and pull requests.
+// Package jira is the issue tracker adapter for Jira Cloud: PROJ-123 keys of known projects, found
+// case-insensitively in commit messages, branch names and pull requests, and the REST API (v3) for
+// the issues themselves.
 package jira
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -12,20 +14,29 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"sync"
 
+	"github.com/marleypowell/footprint/internal/atlassian"
 	"github.com/marleypowell/footprint/internal/tracker"
 )
 
-// Tracker finds keys of known Jira projects. With no known projects it finds nothing: a bare
-// KEY-123 pattern matches too much (UTF-8, ISO-8601, dotnet-8...).
+// Tracker finds keys of known Jira projects, and loads issues from one Jira site. With no known
+// projects it finds no keys: a bare KEY-123 pattern matches too much (UTF-8, ISO-8601, dotnet-8...).
 type Tracker struct {
 	projects []tracker.Project
 	keys     map[string]bool
+	site     string
+
+	once   sync.Once
+	api    *atlassian.Client
+	apiErr error
 }
 
 var _ tracker.Tracker = (*Tracker)(nil)
 
 type settings struct {
+	// Site is the Jira Cloud site, e.g. "example.atlassian.net".
+	Site string `json:"site"`
 	// ProjectsFile lists the projects, as Jira's project search API returns them (relative to the
 	// config file). Export it with the Atlassian connector.
 	ProjectsFile string `json:"projects_file"`
@@ -42,7 +53,7 @@ func New(raw json.RawMessage, baseDir string) (*Tracker, error) {
 			return nil, fmt.Errorf("jira settings: %w", err)
 		}
 	}
-	t := &Tracker{projects: []tracker.Project{}, keys: map[string]bool{}}
+	t := &Tracker{projects: []tracker.Project{}, keys: map[string]bool{}, site: s.Site}
 	if s.ProjectsFile != "" {
 		file := s.ProjectsFile
 		if !filepath.IsAbs(file) {
@@ -90,6 +101,74 @@ func readProjects(file string) ([]tracker.Project, error) {
 }
 
 func (t *Tracker) Projects() []tracker.Project { return t.projects }
+
+// client returns the API client, connecting on first use so that Keys and Projects need no token.
+func (t *Tracker) client(ctx context.Context) (*atlassian.Client, error) {
+	t.once.Do(func() {
+		if t.site == "" {
+			t.apiErr = errors.New(`jira: issue_tracker.site is not set (e.g. "example.atlassian.net")`)
+			return
+		}
+		t.api, t.apiErr = atlassian.Connect(ctx, t.site, atlassian.Jira)
+	})
+	return t.api, t.apiErr
+}
+
+func (t *Tracker) Account(ctx context.Context) (tracker.Account, error) {
+	api, err := t.client(ctx)
+	if err != nil {
+		return tracker.Account{}, err
+	}
+	var me struct {
+		AccountID    string `json:"accountId"`
+		DisplayName  string `json:"displayName"`
+		EmailAddress string `json:"emailAddress"`
+	}
+	if err := api.Get(ctx, "/rest/api/3/myself", nil, &me); err != nil {
+		return tracker.Account{}, err
+	}
+	return tracker.Account{ID: me.AccountID, Name: me.DisplayName, Email: me.EmailAddress}, nil
+}
+
+// Assigned searches with JQL's WAS operator, which matches the current and every past assignee.
+func (t *Tracker) Assigned(ctx context.Context, account tracker.Account) ([]string, error) {
+	if account.ID == "" {
+		return nil, errors.New("jira: the account has no ID")
+	}
+	api, err := t.client(ctx)
+	if err != nil {
+		return nil, err
+	}
+	quoted := strings.NewReplacer(`\`, `\\`, `"`, `\"`).Replace(account.ID)
+	body := map[string]any{
+		"jql":    `assignee WAS "` + quoted + `" ORDER BY created ASC`,
+		"fields": []string{"key"}, "maxResults": 5000, // Jira pages ids and keys the largest
+		"includeArchivedProjects": true,
+	}
+	keys := []string{}
+	for {
+		var page struct {
+			Issues []struct {
+				ID  string `json:"id"`
+				Key string `json:"key"`
+			} `json:"issues"`
+			NextPageToken string `json:"nextPageToken"`
+		}
+		if err := api.Post(ctx, "/rest/api/3/search/jql", body, &page); err != nil {
+			return nil, err
+		}
+		for _, issue := range page.Issues {
+			if issue.Key == "" {
+				return nil, fmt.Errorf("jira: the search returned issue %s without its key", issue.ID)
+			}
+			keys = append(keys, issue.Key)
+		}
+		if page.NextPageToken == "" { // no token: the last page, whatever its size
+			return keys, nil
+		}
+		body["nextPageToken"] = page.NextPageToken
+	}
+}
 
 var (
 	// Jira issue numbers never have leading zeros, which also rules out analyzer IDs like ACME0901.

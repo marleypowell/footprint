@@ -16,6 +16,7 @@ import (
 	"github.com/marleypowell/footprint/internal/catalog"
 	"github.com/marleypowell/footprint/internal/doc"
 	"github.com/marleypowell/footprint/internal/tracker"
+	"github.com/marleypowell/footprint/internal/wiki"
 )
 
 var (
@@ -94,13 +95,17 @@ type Index struct {
 	Schema      string         `json:"schema"`
 	Totals      IndexTotals    `json:"totals"`
 	Repos       []IndexRepo    `json:"repos"`
+	// IssuesByProject and WikiBySpace list the issues/ and wiki/ files, most records first.
+	IssuesByProject []IndexGroup `json:"issues_by_project"`
+	WikiBySpace     []IndexGroup `json:"wiki_by_space"`
 }
 
-// Sources names the adapter that produced each part of the dataset.
+// Sources names the adapter that produced each part of the dataset; Wiki is null without one.
 type Sources struct {
-	CodeHost     string `json:"code_host"`
-	Catalog      string `json:"catalog"`
-	IssueTracker string `json:"issue_tracker"`
+	CodeHost     string  `json:"code_host"`
+	Catalog      string  `json:"catalog"`
+	IssueTracker string  `json:"issue_tracker"`
+	Wiki         *string `json:"wiki"`
 }
 
 type IndexTotals struct {
@@ -111,6 +116,19 @@ type IndexTotals struct {
 	PRsAuthored             int     `json:"prs_authored"`
 	FirstAuthoredAt         *string `json:"first_authored_at"`
 	LastAuthoredAt          *string `json:"last_authored_at"`
+	Issues                  int     `json:"issues"`
+	WikiPages               int     `json:"wiki_pages"`
+}
+
+// IndexGroup is one file of issues (an issue project) or of wiki content (a space).
+type IndexGroup struct {
+	Key            string      `json:"key"`
+	Name           string      `json:"name"`
+	File           string      `json:"file"`
+	Records        int         `json:"records"`
+	ByRole         *doc.Object `json:"by_role"` // records with each role, in the records' role order
+	FirstCreatedAt *string     `json:"first_created_at"`
+	LastUpdatedAt  *string     `json:"last_updated_at"`
 }
 
 type IndexRepo struct {
@@ -260,10 +278,23 @@ func (h *harness) projects(ctx context.Context) error {
 			totals.LastAuthoredAt = r.LastAuthoredAt
 		}
 	}
+	issueProjects, err := indexGroups(filepath.Join(h.raw, "issues"), "issues/", issueRoles, issueGroup)
+	if err != nil {
+		return err
+	}
+	wikiSpaces, err := indexGroups(filepath.Join(h.raw, "wiki"), "wiki/", pageRoles, spaceGroup)
+	if err != nil {
+		return err
+	}
+	totals.Issues, totals.WikiPages = records(issueProjects), records(wikiSpaces)
+	sources := Sources{CodeHost: h.cfg.CodeHost.Kind, Catalog: h.cfg.Catalog.Kind, IssueTracker: h.cfg.IssueTracker.Kind}
+	if h.cfg.Wiki != nil {
+		sources.Wiki = &h.cfg.Wiki.Kind
+	}
 	err = writeJSON(filepath.Join(h.raw, "index.json"), Index{
-		GeneratedAt: nowISO(), Org: h.cfg.Org, Login: h.cfg.Login,
-		Sources:  Sources{CodeHost: h.cfg.CodeHost.Kind, Catalog: h.cfg.Catalog.Kind, IssueTracker: h.cfg.IssueTracker.Kind},
+		GeneratedAt: nowISO(), Org: h.cfg.Org, Login: h.cfg.Login, Sources: sources,
 		Identity: h.cfg.Identity, Schema: "README.md", Totals: totals, Repos: orEmpty(index),
+		IssuesByProject: issueProjects, WikiBySpace: wikiSpaces,
 	})
 	if err != nil {
 		return err
@@ -276,8 +307,88 @@ func (h *harness) projects(ctx context.Context) error {
 	if err := writeFileAtomic(filepath.Join(h.raw, "README.md"), footprint.DataSchema); err != nil {
 		return err
 	}
-	logf("projects: indexed %d repos", len(index))
+	logf("projects: indexed %d repos, %d issue projects and %d wiki spaces", len(index), len(issueProjects), len(wikiSpaces))
 	return nil
+}
+
+// refreshIndex rewrites index.json after update, when the projects stage has written one: the
+// issues and pages stages run after it and refresh their own parts.
+func (h *harness) refreshIndex(update func(*Index)) error {
+	path := filepath.Join(h.raw, "index.json")
+	var index Index
+	ok, err := readJSON(path, &index)
+	if err != nil || !ok {
+		if !ok && err == nil {
+			logf("no index.json yet: the projects stage will index this")
+		}
+		return err
+	}
+	update(&index)
+	index.GeneratedAt = nowISO()
+	return writeJSON(path, index)
+}
+
+func issueGroup(r indexedRecord) (string, string) { return r.Project.Key, r.Project.Name }
+func spaceGroup(r indexedRecord) (string, string) { return r.Space.Key, r.Space.Name }
+
+func records(groups []IndexGroup) int {
+	n := 0
+	for _, g := range groups {
+		n += g.Records
+	}
+	return n
+}
+
+// indexedRecord is the part of an issue or page record the index reads.
+type indexedRecord struct {
+	Project   tracker.ProjectRef `json:"project"`
+	Space     wiki.Space         `json:"space"`
+	Roles     []string           `json:"roles"`
+	CreatedAt string             `json:"created_at"`
+	UpdatedAt string             `json:"updated_at"`
+}
+
+// indexGroups summarises each .jsonl file in dir (issues/ or wiki/), most records first.
+func indexGroups(dir, prefix string, roles []string, group func(indexedRecord) (key, name string)) ([]IndexGroup, error) {
+	entries, err := os.ReadDir(dir)
+	if err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return nil, err
+	}
+	groups := []IndexGroup{}
+	for _, e := range entries {
+		if !strings.HasSuffix(e.Name(), ".jsonl") {
+			continue
+		}
+		rows, err := readJSONL[indexedRecord](filepath.Join(dir, e.Name()))
+		if err != nil {
+			return nil, err
+		}
+		if len(rows) == 0 {
+			continue
+		}
+		g := IndexGroup{File: prefix + e.Name(), Records: len(rows), ByRole: doc.NewObject()}
+		g.Key, g.Name = group(rows[0])
+		counts := map[string]int{}
+		for _, r := range rows {
+			for _, role := range r.Roles {
+				counts[role]++
+			}
+			if r.CreatedAt != "" && (g.FirstCreatedAt == nil || r.CreatedAt < *g.FirstCreatedAt) {
+				g.FirstCreatedAt = ptr(r.CreatedAt)
+			}
+			if r.UpdatedAt != "" && (g.LastUpdatedAt == nil || r.UpdatedAt > *g.LastUpdatedAt) {
+				g.LastUpdatedAt = ptr(r.UpdatedAt)
+			}
+		}
+		for _, role := range roles {
+			if counts[role] > 0 {
+				g.ByRole.Set(role, counts[role])
+			}
+		}
+		groups = append(groups, g)
+	}
+	sort.SliceStable(groups, func(i, j int) bool { return groups[i].Records > groups[j].Records })
+	return groups, nil
 }
 
 // categoryRank orders a repo's entities: systems, then components, APIs and resources, then the rest.

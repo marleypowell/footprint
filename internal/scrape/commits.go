@@ -14,6 +14,8 @@ import (
 	"strconv"
 	"strings"
 	"sync/atomic"
+
+	"github.com/marleypowell/footprint/internal/par"
 )
 
 const (
@@ -112,7 +114,7 @@ func (h *harness) commits(ctx context.Context) error {
 	}
 	repos = h.selected(repos)
 	var done, total, active atomic.Int64
-	err = forEach(ctx, 6, repos, func(ctx context.Context, _ int, r Repo) error {
+	err = par.ForEach(ctx, 6, repos, func(ctx context.Context, _ int, r Repo) error {
 		rows, err := h.extractCommits(ctx, r)
 		if err != nil {
 			return fmt.Errorf("%s: %w", r.Name, err)

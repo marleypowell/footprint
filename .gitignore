@@ -2,6 +2,9 @@
 /config.json
 /data/
 
+# tokens for Jira and Confluence (see .env.example)
+/.env
+
 # bare git mirrors of every repo in the org (several GB for a large org) and run state
 /cache/
 

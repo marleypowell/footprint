@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"sort"
 	"strings"
 	"testing"
@@ -14,6 +15,8 @@ import (
 
 	"github.com/marleypowell/footprint/internal/catalog"
 	"github.com/marleypowell/footprint/internal/codehost"
+	"github.com/marleypowell/footprint/internal/tracker"
+	"github.com/marleypowell/footprint/internal/wiki"
 )
 
 // gitFixture builds repositories with git itself, isolated from the user's git config.
@@ -122,24 +125,59 @@ func TestPipeline(t *testing.T) {
 			DefaultBranch: &mainBranch, CreatedAt: "2024-01-01T00:00:00Z", Languages: []codehost.Language{}, Topics: []string{}}},
 		prs: []codehost.PullRequest{
 			{Repo: "repo", Number: 3, Title: "ENG-42: rename a", Commits: []codehost.PRCommit{{SHA: renamed}, {SHA: binary}, {SHA: pushedToMyPR}}},
-			{Repo: "repo", Number: 7, Title: "side work", MergeCommitSHA: &merge},
+			{Repo: "repo", Number: 7, Title: "side work, see ENG-404", MergeCommitSHA: &merge},
 		},
 		attributed: []codehost.AttributedCommit{
 			{Repo: "repo", SHA: authored, AuthorName: "Jane Doe", AuthorEmail: "jane.doe@example.com"},
 			{Repo: "repo", SHA: "0000000000000000000000000000000000000000", Date: "2023-01-01T00:00:00Z", Subject: "lost"},
 		},
 	}
+	jane, colleague := &tracker.User{ID: "u-jane", Name: "Jane Doe"}, &tracker.User{ID: "u-other", Name: "Other Person"}
+	eng := tracker.ProjectRef{Key: "ENG", Name: "Engineering"}
+	issues := &fakeTracker{
+		account:  tracker.Account{ID: "u-jane", Name: "Jane Doe", Email: "jane.doe@example.com"},
+		assigned: []string{"ENG-7", "ENG-99", "OPS-5"},
+		issues: []tracker.Issue{
+			{Key: "ENG-7", Project: eng, Summary: "Planned work", CreatedAt: "2024-01-01T00:00:00+00:00", UpdatedAt: "2024-02-01T00:00:00+00:00",
+				History:  []tracker.Change{{ID: "h1", Author: jane, Items: []tracker.ChangeItem{{Field: "status", To: ptr("Done")}}}},
+				Worklogs: []tracker.Worklog{{ID: "w1", Author: jane, Seconds: 3600}}},
+			{Key: "ENG-12", Project: eng, Summary: "Add a", Reporter: colleague, CreatedAt: "2024-01-02T00:00:00+00:00"},
+			{Key: "ENG-42", Project: eng, Summary: "Rename a", Assignee: colleague, Reporter: jane, Creator: jane,
+				History: []tracker.Change{{ID: "h2", Author: colleague, Items: []tracker.ChangeItem{{Field: "assignee", ToID: ptr("u-jane")}}}}},
+			{Key: "ENG-99", PreviousKeys: []string{"ENG-34"}, Project: eng, Summary: "Moved from another team", Assignee: jane,
+				Comments: []tracker.Comment{{ID: "c1", Author: jane, Body: "done"}, {ID: "c2", Author: colleague, Body: "thanks"}}},
+			{Key: "OPS-5", Project: tracker.ProjectRef{Key: "OPS", Name: "Operations"}, Summary: "On call", Assignee: jane},
+		},
+	}
+	wikiJane, wikiOther := &wiki.User{ID: "u-jane", Name: "Jane Doe"}, &wiki.User{ID: "u-other", Name: "Other Person"}
+	engSpace := wiki.Space{Key: "eng", Name: "Engineering"}
+	notes := &fakeWiki{account: wiki.Account{ID: "u-jane", Name: "Jane Doe"}, pages: []wiki.Page{
+		{ID: "9a2d-design", Type: "page", Title: "Design notes", Space: engSpace, CreatedAt: "2024-03-01T00:00:00+00:00",
+			CreatedBy: wikiJane, Body: ptr("# Design"), Versions: []wiki.Version{{Number: 1, Author: wikiJane}, {Number: 2, Author: wikiOther}}},
+		{ID: "6f1c-team", Type: "page", Title: "Team wiki", Space: engSpace, CreatedAt: "2023-05-01T00:00:00+00:00", CreatedBy: wikiOther,
+			Versions: []wiki.Version{{Number: 1, Author: wikiOther}, {Number: 2, Author: wikiJane}, {Number: 3, Author: wikiJane}}},
+		{ID: "b7e0-roadmap", Type: "database", Title: "Roadmap", Space: wiki.Space{Key: "product", Name: "Product"},
+			CreatedBy: wikiJane, Owner: wikiJane, Versions: []wiki.Version{{Number: 1, Author: wikiJane}}},
+		// Edited by the user once, but it keeps only its current version, saved by someone else.
+		{ID: "c4a1-sketch", Type: "whiteboard", Title: "Sketch", Space: wiki.Space{Key: "product", Name: "Product"},
+			CreatedAt: "2024-05-01T00:00:00+00:00", CreatedBy: wikiOther, Version: 5, Versions: []wiki.Version{{Number: 5, Author: wikiOther}}},
+	}}
 	cfg := &Config{
 		Org: "org", Login: "jdoe", dir: root,
 		Identity:     IdentityConfig{Emails: []string{"jane.doe@example.com"}, Names: []string{"Jane Doe"}, DiscoveryPattern: "jane|doe"},
 		CodeHost:     Tool{Kind: "fakehost"},
 		Catalog:      Tool{Kind: "fakecatalog"},
 		IssueTracker: Tool{Kind: "faketracker"},
+		Wiki:         &Tool{Kind: "fakewiki"},
 		Mirror:       MirrorConfig{Parallelism: 2, FetchPullRefs: true},
 	}
 	raw, cache := filepath.Join(root, "raw"), filepath.Join(root, "cache")
+	stale := filepath.Join(raw, "issues", "GONE.jsonl") // a project the user no longer has issues in
+	if err := writeFileAtomic(stale, []byte("{}\n")); err != nil {
+		t.Fatal(err)
+	}
 	opts := Options{DataDir: raw, CacheDir: cache}
-	if err := Run(context.Background(), opts, cfg, Tools{Host: host, Catalog: fakeCatalog{}, Tracker: fakeTracker{}}, StageOrder); err != nil {
+	if err := Run(context.Background(), opts, cfg, Tools{Host: host, Catalog: fakeCatalog{}, Tracker: issues, Wiki: notes}, StageOrder); err != nil {
 		t.Fatal(err)
 	}
 
@@ -238,7 +276,7 @@ func TestPipeline(t *testing.T) {
 	// index.json and org files
 	var index Index
 	read("index.json", &index)
-	check("sources", index.Sources, Sources{CodeHost: "fakehost", Catalog: "fakecatalog", IssueTracker: "faketracker"})
+	check("sources", index.Sources, Sources{CodeHost: "fakehost", Catalog: "fakecatalog", IssueTracker: "faketracker", Wiki: ptr("fakewiki")})
 	check("index login", index.Login, "jdoe")
 	check("index catalog summary", index.Repos[0].Catalog, []IndexEntity{{Ref: "service:repo", Category: "component",
 		Title: ptr("Repo service"), Description: ptr("Does things")}})
@@ -262,4 +300,99 @@ func TestPipeline(t *testing.T) {
 	}
 	b, _ := json.Marshal(index.Repos[0].Files)
 	check("index files", string(b), `{"commits":"repos/repo/commits.jsonl","prs":"repos/repo/prs.jsonl"}`)
+
+	// issues/: assigned at some point (by the tracker's search, or its history), or named in git work
+	records, err := readJSONL[IssueRecord](filepath.Join(raw, "issues", "ENG.jsonl"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	byKey, order := map[string]IssueRecord{}, []string{}
+	for _, r := range records {
+		byKey[r.Key], order = r, append(order, r.Key)
+	}
+	check("issues, by number", order, []string{"ENG-7", "ENG-12", "ENG-42", "ENG-99"})
+	check("roles: assigned per the search, edited, logged work", byKey["ENG-7"].Roles, []string{"assignee", "editor", "worklogger"})
+	check("roles: only named in a commit", byKey["ENG-12"].Roles, []string{"referenced"})
+	check("roles: assigned per the history", byKey["ENG-42"].Roles, []string{"assignee", "reporter", "creator", "referenced"})
+	check("roles: moved issue, named by its old key", byKey["ENG-99"].Roles, []string{"assignee", "commenter", "referenced"})
+	check("commit references", byKey["ENG-12"].ReferencedBy, References{Commits: []CommitRef{{Repo: "repo", SHA: authored}}, PRs: []PRRef{}})
+	check("PR references", byKey["ENG-42"].ReferencedBy.PRs, []PRRef{{Repo: "repo", Number: 3}})
+	onBranch := []CommitRef{{Repo: "repo", SHA: renamed}, {Repo: "repo", SHA: binary}, {Repo: "repo", SHA: pushedToMyPR}}
+	sort.Slice(onBranch, func(i, j int) bool { return onBranch[i].SHA < onBranch[j].SHA })
+	check("old-key references (the feature/ENG-34 branch)", byKey["ENG-99"].ReferencedBy.Commits, onBranch)
+	comments := byKey["ENG-99"].Comments
+	check("comments by_user", []bool{comments[0].ByUser, comments[1].ByUser}, []bool{true, false})
+	check("changes by_user", byKey["ENG-7"].History[0].ByUser, true)
+	if ops, err := readJSONL[IssueRecord](filepath.Join(raw, "issues", "OPS.jsonl")); err != nil || len(ops) != 1 {
+		t.Errorf("OPS.jsonl: %d records, %v", len(ops), err)
+	}
+	if fileExists(stale) {
+		t.Error("a stale project file was kept")
+	}
+	var unresolved []UnresolvedKey
+	read("issues/unresolved.json", &unresolved)
+	check("unresolved keys", unresolved, []UnresolvedKey{{Missing: tracker.Missing{Key: "ENG-404", Reason: tracker.NotFound},
+		ReferencedBy: References{Commits: []CommitRef{}, PRs: []PRRef{{Repo: "repo", Number: 7}}}}})
+
+	// wiki/: content the user created or edited, oldest first per space
+	pages, err := readJSONL[PageRecord](filepath.Join(raw, "wiki", "eng.jsonl"))
+	if err != nil || len(pages) != 2 {
+		t.Fatalf("eng.jsonl: %d pages, %v", len(pages), err)
+	}
+	check("edited page", []any{pages[0].Title, pages[0].Roles, pages[0].UserVersions}, []any{"Team wiki", []string{"editor"}, 2})
+	check("created page", []any{pages[1].Title, pages[1].Roles, pages[1].UserVersions}, []any{"Design notes", []string{"creator"}, 1})
+	check("versions by_user", []bool{pages[1].Versions[0].ByUser, pages[1].Versions[1].ByUser}, []bool{true, false})
+	product, err := readJSONL[PageRecord](filepath.Join(raw, "wiki", "product.jsonl"))
+	if err != nil || len(product) != 2 {
+		t.Fatalf("product.jsonl: %d pages, %v", len(product), err)
+	}
+	check("created and owned database", product[0].Roles, []string{"creator", "owner"})
+	check("whiteboard without the user's version", []any{product[1].Roles, product[1].UserVersions}, []any{[]string{"contributor"}, 0})
+
+	// The issues and pages stages ran after projects, and refreshed their parts of the index.
+	read("index.json", &index)
+	check("totals", []int{index.Totals.Issues, index.Totals.WikiPages, index.Totals.Commits}, []int{5, 4, 8})
+	b, _ = json.Marshal(index.IssuesByProject[0])
+	check("issue project", string(b), `{"key":"ENG","name":"Engineering","file":"issues/ENG.jsonl","records":4,`+
+		`"by_role":{"assignee":3,"reporter":1,"creator":1,"commenter":1,"editor":1,"worklogger":1,"referenced":3},`+
+		`"first_created_at":"2024-01-01T00:00:00+00:00","last_updated_at":"2024-02-01T00:00:00+00:00"}`)
+	check("issue projects", len(index.IssuesByProject), 2) // the stale GONE.jsonl the projects stage saw is gone
+	check("wiki spaces", []string{index.WikiBySpace[0].File, index.WikiBySpace[1].File}, []string{"wiki/eng.jsonl", "wiki/product.jsonl"})
+	if index.Repos[0].CommitsByRoles == nil || len(index.Repos[0].CommitsByRoles.Keys()) == 0 {
+		t.Error("refreshing the index lost the repos' commits_by_roles")
+	}
+}
+
+// When the tracker loads none of the issues, the stage fails and keeps the previous files.
+func TestIssuesKeepsDataWhenNothingLoads(t *testing.T) {
+	raw := t.TempDir()
+	previous := filepath.Join(raw, "issues", "ENG.jsonl")
+	if err := writeFileAtomic(previous, []byte(`{"key":"ENG-1"}`+"\n")); err != nil {
+		t.Fatal(err)
+	}
+	tr := &fakeTracker{account: tracker.Account{ID: "u-jane"}, assigned: []string{"ENG-1", "ENG-2"}}
+	h := &harness{raw: raw, tools: Tools{Tracker: tr}, id: &identity{emails: map[string]bool{}}}
+	if err := h.issues(context.Background()); err == nil || !strings.Contains(err.Error(), "none of the 2 issues") {
+		t.Errorf("want a refusal, got %v", err)
+	}
+	if !fileExists(previous) {
+		t.Error("the previous issues were removed")
+	}
+}
+
+func TestNaturalCompare(t *testing.T) {
+	keys := []string{"ENG-10", "ENG-9", "AB-100", "ENG-009", "ENG-1a", "ENG-1"}
+	slices.SortFunc(keys, naturalCompare)
+	if want := []string{"AB-100", "ENG-1", "ENG-1a", "ENG-009", "ENG-9", "ENG-10"}; !reflect.DeepEqual(keys, want) {
+		t.Errorf("got %v, want %v", keys, want)
+	}
+}
+
+// Without a wiki in the config, the pages stage does nothing.
+func TestPagesWithoutWiki(t *testing.T) {
+	raw := t.TempDir()
+	h := &harness{raw: raw, tools: Tools{}}
+	if err := h.pages(context.Background()); err != nil || fileExists(filepath.Join(raw, "wiki")) {
+		t.Errorf("err %v; wiki/ written: %v", err, fileExists(filepath.Join(raw, "wiki")))
+	}
 }

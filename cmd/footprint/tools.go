@@ -11,10 +11,12 @@ import (
 	"github.com/marleypowell/footprint/internal/scrape"
 	"github.com/marleypowell/footprint/internal/tracker"
 	"github.com/marleypowell/footprint/internal/tracker/jira"
+	"github.com/marleypowell/footprint/internal/wiki"
+	"github.com/marleypowell/footprint/internal/wiki/confluence"
 )
 
 // The adapters for each seam, selected by the "kind" of its config section. Supporting another
-// tool (gitlab, cortex, linear) means a package beside the existing adapter and a case here.
+// tool (gitlab, cortex, linear, notion) means a package beside the existing adapter and a case here.
 
 func newCodeHost(kind, org string, settings json.RawMessage) (codehost.Host, error) {
 	switch kind {
@@ -40,6 +42,14 @@ func newTracker(kind string, settings json.RawMessage, configDir string) (tracke
 	return nil, unsupported("issue_tracker", kind, "jira")
 }
 
+func newWiki(kind string, settings json.RawMessage) (wiki.Wiki, error) {
+	switch kind {
+	case "confluence":
+		return confluence.New(settings)
+	}
+	return nil, unsupported("wiki", kind, "confluence")
+}
+
 func newTools(cfg *scrape.Config) (scrape.Tools, error) {
 	host, err := newCodeHost(cfg.CodeHost.Kind, cfg.Org, cfg.CodeHost.Settings)
 	if err != nil {
@@ -53,7 +63,13 @@ func newTools(cfg *scrape.Config) (scrape.Tools, error) {
 	if err != nil {
 		return scrape.Tools{}, err
 	}
-	return scrape.Tools{Host: host, Catalog: cat, Tracker: issues}, nil
+	tools := scrape.Tools{Host: host, Catalog: cat, Tracker: issues}
+	if cfg.Wiki != nil { // optional; a nil adapter would be a non-nil interface
+		if tools.Wiki, err = newWiki(cfg.Wiki.Kind, cfg.Wiki.Settings); err != nil {
+			return scrape.Tools{}, err
+		}
+	}
+	return tools, nil
 }
 
 func unsupported(section, kind string, supported ...string) error {

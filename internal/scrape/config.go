@@ -13,10 +13,12 @@ type Config struct {
 	Org      string         `json:"org"`   // the org (GitHub) or group (GitLab) to collect from
 	Login    string         `json:"login"` // the user's account on the code host
 	Identity IdentityConfig `json:"identity"`
-	// Each tool section names its adapter ("kind") and holds that adapter's settings.
+	// Each tool section names its adapter ("kind") and holds that adapter's settings. The wiki is
+	// optional.
 	CodeHost     Tool         `json:"code_host"`
 	Catalog      Tool         `json:"catalog"`
 	IssueTracker Tool         `json:"issue_tracker"`
+	Wiki         *Tool        `json:"wiki,omitempty"`
 	Mirror       MirrorConfig `json:"mirror"`
 
 	dir string
@@ -73,10 +75,14 @@ func LoadConfig(path string) (*Config, error) {
 	if err := json.Unmarshal(data, &cfg); err != nil {
 		return nil, fmt.Errorf("%s: %w", path, err)
 	}
-	for _, required := range []struct{ name, value string }{
+	required := []struct{ name, value string }{
 		{"org", cfg.Org}, {"login", cfg.Login}, {"code_host.kind", cfg.CodeHost.Kind},
 		{"catalog.kind", cfg.Catalog.Kind}, {"issue_tracker.kind", cfg.IssueTracker.Kind},
-	} {
+	}
+	if cfg.Wiki != nil {
+		required = append(required, struct{ name, value string }{"wiki.kind", cfg.Wiki.Kind})
+	}
+	for _, required := range required {
 		if required.value == "" {
 			return nil, fmt.Errorf("%s: %s is missing (regenerate with `footprint init --force --org <org>`)", path, required.name)
 		}

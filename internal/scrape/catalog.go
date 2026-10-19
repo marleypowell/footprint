@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/marleypowell/footprint/internal/catalog"
+	"github.com/marleypowell/footprint/internal/par"
 )
 
 type parseError struct {
@@ -41,7 +42,7 @@ func (h *harness) catalog(ctx context.Context) error {
 		return err
 	}
 	results := make([]catalog.Result, len(repos))
-	err = forEach(ctx, 8, repos, func(ctx context.Context, i int, r Repo) error {
+	err = par.ForEach(ctx, 8, repos, func(ctx context.Context, i int, r Repo) error {
 		ref := "refs/heads/" + r.DefaultBranchName()
 		if r.DefaultBranchName() == "" || !hasRef(ctx, h.mirrorPath(r.Name), ref) {
 			return nil

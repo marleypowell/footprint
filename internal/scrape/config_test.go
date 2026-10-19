@@ -38,9 +38,18 @@ func TestLoadConfig(t *testing.T) {
 		t.Errorf("defaults: %+v dir=%s", cfg.Mirror, cfg.Dir())
 	}
 
+	if cfg.Wiki != nil {
+		t.Errorf("the wiki is optional: %+v", cfg.Wiki)
+	}
+
 	write(`{"org": "o", "login": "l", "code_host": {"kind": "github"}, "issue_tracker": {"kind": "jira"}}`)
 	if _, err := LoadConfig(path); err == nil || !strings.Contains(err.Error(), "catalog.kind") {
 		t.Errorf("a missing tool kind should be reported: %v", err)
+	}
+	write(`{"org": "o", "login": "l", "code_host": {"kind": "github"}, "catalog": {"kind": "backstage"},
+	        "issue_tracker": {"kind": "jira"}, "wiki": {"site": "x"}}`)
+	if _, err := LoadConfig(path); err == nil || !strings.Contains(err.Error(), "wiki.kind") {
+		t.Errorf("a wiki section without a kind should be reported: %v", err)
 	}
 }
 
@@ -71,8 +80,9 @@ func TestInit(t *testing.T) {
 		t.Errorf("pattern = %q", cfg.Identity.DiscoveryPattern)
 	}
 	// another org than the example's: keep the tool kinds, drop acme's settings
-	if string(cfg.Catalog.Settings) != `{"kind":"backstage"}` || string(cfg.IssueTracker.Settings) != `{"kind":"jira"}` {
-		t.Errorf("example settings leaked into another org: %s %s", cfg.Catalog.Settings, cfg.IssueTracker.Settings)
+	if string(cfg.Catalog.Settings) != `{"kind":"backstage"}` || string(cfg.IssueTracker.Settings) != `{"kind":"jira"}` ||
+		cfg.Wiki == nil || string(cfg.Wiki.Settings) != `{"kind":"confluence"}` {
+		t.Errorf("example settings leaked into another org: %s %s %+v", cfg.Catalog.Settings, cfg.IssueTracker.Settings, cfg.Wiki)
 	}
 	if err := Init(context.Background(), opts, host); err == nil {
 		t.Error("init should refuse to overwrite without --force")

@@ -1,8 +1,8 @@
 // Package scrape collects raw data about one person's work across an org: their commits on every
-// ref, the pull requests they authored, and what each repo is. It owns the git mirrors and the
-// output; the code host, catalog and issue tracker are adapters behind the codehost, catalog and
-// tracker interfaces. Every stage is idempotent and overwrites only its own output; the output
-// contract is docs/data-schema.md.
+// ref, the pull requests they authored, what each repo is, the issues they worked on and the wiki
+// pages they wrote. It owns the git mirrors and the output; the code host, catalog, issue tracker
+// and wiki are adapters behind the codehost, catalog, tracker and wiki interfaces. Every stage is
+// idempotent and overwrites only its own output; the output contract is docs/data-schema.md.
 package scrape
 
 import (
@@ -16,6 +16,7 @@ import (
 	"github.com/marleypowell/footprint/internal/catalog"
 	"github.com/marleypowell/footprint/internal/codehost"
 	"github.com/marleypowell/footprint/internal/tracker"
+	"github.com/marleypowell/footprint/internal/wiki"
 )
 
 // Options are the command-line settings. Relative paths resolve against the working directory.
@@ -29,15 +30,18 @@ type Options struct {
 	Force      bool   // init only
 }
 
-// Tools are the adapters for one run.
+// Tools are the adapters for one run. Wiki is nil when the config has no wiki.
 type Tools struct {
 	Host    codehost.Host
 	Catalog catalog.Catalog
 	Tracker tracker.Tracker
+	Wiki    wiki.Wiki
 }
 
-// StageOrder is the order `all` runs the stages in. commits reads prs (for the pr-author role).
-var StageOrder = []string{"inventory", "mirror", "identities", "prs", "commits", "catalog", "projects", "verify"}
+// StageOrder is the order `all` runs the stages in. commits reads prs (for the pr-author role), and
+// issues reads both (for the keys they name). issues and pages come last, after the stages that need
+// only the code host: they need another login, and they refresh their own parts of index.json.
+var StageOrder = []string{"inventory", "mirror", "identities", "prs", "commits", "catalog", "projects", "verify", "issues", "pages"}
 
 // Stages expands "all" and checks the names, before anything runs.
 func Stages(names []string) ([]string, error) {
@@ -65,6 +69,8 @@ func Run(ctx context.Context, opts Options, cfg *Config, tools Tools, stages []s
 		"prs":        h.prs,
 		"commits":    h.commits,
 		"catalog":    h.catalog,
+		"issues":     h.issues,
+		"pages":      h.pages,
 		"projects":   h.projects,
 		"verify":     h.verify,
 	}

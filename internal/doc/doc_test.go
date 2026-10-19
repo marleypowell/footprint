@@ -70,3 +70,18 @@ func marshal(t *testing.T, v any) string {
 	}
 	return string(b)
 }
+
+func TestObjectRoundTrip(t *testing.T) {
+	in := `{"z":1,"a":{"y":[true,null,"s",{"k":2.5}],"b":"x"}}`
+	var o Object
+	if err := o.UnmarshalJSON([]byte(in)); err != nil {
+		t.Fatal(err)
+	}
+	out, err := Marshal(&o)
+	if err != nil || string(out) != in {
+		t.Errorf("round trip = %s (%v), want %s", out, err, in)
+	}
+	if err := o.UnmarshalJSON([]byte(`[1]`)); err == nil {
+		t.Error("want an error for a non-object")
+	}
+}

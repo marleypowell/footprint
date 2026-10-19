@@ -18,8 +18,13 @@
   },
   "issue_tracker": {
     "kind": "jira",
+    "site": "example.atlassian.net",
     "projects_file": "jira_projects.json",
     "extra_project_keys": ["TK", "DEV"]
+  },
+  "wiki": {
+    "kind": "confluence",
+    "site": "example.atlassian.net"
   },
   "mirror": {
     "parallelism": 6,

@@ -1,11 +1,9 @@
 package scrape
 
 import (
-	"context"
 	"os"
 	"sort"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/marleypowell/footprint/internal/logx"
@@ -13,34 +11,6 @@ import (
 
 // logf prints a timestamped progress line to stderr.
 func logf(format string, args ...any) { logx.Printf(format, args...) }
-
-// forEach calls fn for every item with at most n calls in flight. The first error cancels the
-// context passed to the calls still running, stops new ones starting, and is returned.
-func forEach[T any](ctx context.Context, n int, items []T, fn func(ctx context.Context, i int, item T) error) error {
-	ctx, cancel := context.WithCancelCause(ctx)
-	defer cancel(nil)
-	sem := make(chan struct{}, max(n, 1))
-	var wg sync.WaitGroup
-	for i, item := range items {
-		select {
-		case sem <- struct{}{}:
-		case <-ctx.Done():
-		}
-		if ctx.Err() != nil {
-			break
-		}
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			defer func() { <-sem }()
-			if err := fn(ctx, i, item); err != nil {
-				cancel(err)
-			}
-		}()
-	}
-	wg.Wait()
-	return context.Cause(ctx)
-}
 
 // oneLine collapses whitespace runs (e.g. in an HTML error page) so a message fits one log line.
 func oneLine(s string) string { return strings.Join(strings.Fields(s), " ") }

@@ -1,16 +1,18 @@
 # footprint
 
-Collects raw data about **your** work across an org's repositories: every commit you made (full
-message and per-file stats) from the start of each repo's history, the pull requests you authored,
-and what each project is (service catalog entities, READMEs, CLAUDE.md, code host metadata).
+Collects raw data about **your** work across an org: every commit you made (full message and
+per-file stats) from the start of each repo's history, the pull requests you authored, what each
+project is (service catalog entities, READMEs, CLAUDE.md, code host metadata), the issues you were
+assigned or that your commits and PRs name (with comments, history and worklogs), and the wiki pages
+you created or edited.
 
 This is the collection phase only. The output is raw JSON so that a separate aggregation phase
 (a CV, a promotion case, a performance review, ...) can decide what counts.
 [`docs/data-schema.md`](docs/data-schema.md) documents the output and the caveats aggregation has
 to handle.
 
-The code host, service catalog and issue tracker are swappable: today the adapters are GitHub,
-Backstage and Jira (see [Swapping tools](#swapping-tools)).
+The code host, service catalog, issue tracker and wiki are swappable: today the adapters are GitHub,
+Backstage, Jira and Confluence (see [Swapping tools](#swapping-tools)).
 
 ## Quick start
 
@@ -19,7 +21,8 @@ go build -o bin/footprint ./cmd/footprint
 gh auth status                                  # repo + read:org scopes, SSO-authorised for the org
 bin/footprint init --org acme                   # writes config.json for the gh user
 $EDITOR config.json                             # review identity.emails / identity.names
-bin/footprint all                               # ~15 min from cold
+cp .env.example .env && chmod 600 .env          # then add your Atlassian email and API token
+bin/footprint all                               # ~20 min from cold
 ```
 
 Then open `data/raw/index.json`, and check `data/raw/org/verification.json`:
@@ -32,6 +35,20 @@ Then open `data/raw/index.json`, and check `data/raw/org/verification.json`:
 - For the GitHub adapter: the `gh` CLI, logged in (`gh auth login`) with `repo` and `read:org`. For
   orgs with SAML SSO, authorise the token for the org. API calls use `gh auth token` (or
   `GH_TOKEN` / `GITHUB_TOKEN`), and git fetches authenticate through `gh auth git-credential`.
+- For the Jira and Confluence adapters: an Atlassian API token for your account, from
+  [id.atlassian.com](https://id.atlassian.com/manage-profile/security/api-tokens), in
+  `ATLASSIAN_API_TOKEN`, with your Atlassian email in `ATLASSIAN_EMAIL`. Put them in a `.env` file
+  in the working directory (see [`.env.example`](.env.example); it is git-ignored, and `-env` names
+  another file) or export them; exported variables win over the file. A classic token works for
+  both products. A token with scopes is made for one product, so set `JIRA_API_TOKEN` and
+  `CONFLUENCE_API_TOKEN` instead. Read-only scopes are enough:
+  - Jira: `read:jira-work`, `read:jira-user`.
+  - Confluence: `search:confluence`, `read:confluence-user`, `read:page:confluence`,
+    `read:blogpost:confluence`, `read:user:confluence`, plus `read:whiteboard:confluence`,
+    `read:database:confluence`, `read:folder:confluence` and `read:embed:confluence` for owners of
+    those types.
+
+  Scoped tokens work only through Atlassian's API gateway; the client finds it on its own.
 - Disk space for bare mirrors of every non-empty repo in the org (several GB in `cache/` for a large org).
 
 ## Stages
@@ -46,15 +63,21 @@ Then open `data/raw/index.json`, and check `data/raw/org/verification.json`:
 | `prs` | your PRs with their commits and files | GitHub: GraphQL search, ~4 min |
 | `commits` | your commits on any ref | local git only, ~30 s |
 | `catalog` | every catalog entity on every default branch | local git only |
-| `projects` | per-repo `project.json`, docs, and `data/raw/index.json` | local |
+| `projects` | per-repo `project.json`, docs, and `data/raw/index.json` | local; indexes `issues/` and `wiki/` too |
 | `verify` | compares with the code host's own commit attribution | GitHub: ~3 min (search rate limits) |
+| `issues` | issues ever assigned to you, or named in your commits and PRs, with comments, history and worklogs | Jira: one request per issue, a few minutes for thousands |
+| `pages` | wiki content you created or edited, with versions and the body as Markdown | Confluence: CQL search, then each page; skipped without a `wiki` section |
+
+`issues` and `pages` run last because they need the Atlassian token; they refresh their own parts of
+`index.json`. Without a token, `all` still completes everything else, then fails at `issues`.
 
 Every stage is idempotent and overwrites its own output. To refresh later, run
-`mirror prs commits projects verify`. Flags can go anywhere on the command line:
+`mirror prs commits projects verify issues pages`. Flags can go anywhere on the command line:
 
 | flag | default | |
 |---|---|---|
 | `-config` | `config.json` | the personal config |
+| `-env` | `.env` | file of `KEY=value` tokens loaded into the environment |
 | `-data` | `data/raw` | output directory |
 | `-cache` | `cache` | git mirrors and mirror status |
 | `-only` | | comma-separated repos for `mirror` and `commits` |
@@ -73,18 +96,20 @@ Every stage is idempotent and overwrites its own output. To refresh later, run
 - `identity.discovery_pattern`: a regex (valid as both RE2 and POSIX ERE) that the `identities`
   report uses to find variants worth adding, and that `commits` uses to find possible
   `Co-authored-by` trailers.
-- `code_host`, `catalog`, `issue_tracker`: one section per tool. `kind` picks the adapter, and the
-  rest of the section is that adapter's settings:
+- `code_host`, `catalog`, `issue_tracker`, `wiki`: one section per tool (the wiki is optional;
+  without it the `pages` stage does nothing). `kind` picks the adapter, and the rest of the section
+  is that adapter's settings:
   - `github`: no settings.
   - `backstage`: `hub_repos`, the repos holding entities for *other* repos. Entities found there are
     tied to a repo through annotations or links, not by where the file lives.
-  - `jira`: `projects_file` (relative to the config file) and `extra_project_keys`: the real project
-    keys, so `issue_keys` picks up `ABC-123` and skips look-alikes such as `UTF-8`. With neither,
-    no issue keys are extracted.
+  - `jira`: `site` (`example.atlassian.net`), plus `projects_file` (relative to the config file)
+    and `extra_project_keys`: the real project keys, so `issue_keys` picks up `ABC-123` and skips
+    look-alikes such as `UTF-8`. With neither, no issue keys are extracted.
+  - `confluence`: `site`.
 - `mirror`: `parallelism` and `fetch_pull_refs`.
 
-The example's catalog and issue tracker settings are acme's. `init` keeps them only when
-`--org` matches, and keeps just the `kind` for other orgs.
+The example's catalog, issue tracker and wiki settings are acme's. `init` keeps them only
+when `--org` matches, and keeps just the `kind` for other orgs.
 
 [`jira_projects.json`](jira_projects.json) is a snapshot of acme's Jira projects, taken with
 the Atlassian connector in Claude Code (`getVisibleJiraProjects`, `action=browse`). Archived projects
@@ -100,14 +125,16 @@ section:
 |---|---|---|---|
 | code host | `codehost.Host` (account, repos, PRs, attributed commits, plus URL, ref and merge-message conventions) | `codehost/github` | GitLab |
 | service catalog | `catalog.Catalog` (`Scan` one repo's default branch into neutral entities) | `catalog/backstage` | Cortex |
-| issue tracker | `tracker.Tracker` (issue keys in text, the tracker's projects) | `tracker/jira` | Linear |
+| issue tracker | `tracker.Tracker` (issue keys in text, the tracker's projects; the account, the issues ever assigned to it, issues loaded by key) | `tracker/jira` | Linear |
+| wiki | `wiki.Wiki` (the account, and everything it created or edited) | `wiki/confluence` | Notion |
 
 To add one, write a package beside the existing adapter that satisfies the interface, then add a
 case to `cmd/footprint/tools.go`. The interface docs state the contracts. For example, a code
 host's `Remote` must fetch change-request heads to `refs/pull/<n>/head` (GitLab:
 `+refs/merge-requests/*/head:refs/pull/*/head`). The in-memory adapters in
-`internal/scrape/fakes_test.go`, written in GitLab, Cortex and Linear style, show the shape, and
-`TestPipeline` runs every stage through them.
+`internal/scrape/fakes_test.go`, written in GitLab, Cortex, Linear and Notion style, show the shape,
+and `TestPipeline` runs every stage through them. The Jira and Confluence adapters share
+`internal/atlassian` (authentication, retries, and rendering Atlassian's rich text as Markdown).
 
 ## Completeness
 
@@ -116,8 +143,11 @@ host's `Remote` must fetch change-request heads to `refs/pull/<n>/head` (GitLab:
   name is missing from the config.
 - `data/raw/org/verification.json` lists default-branch commits that the code host attributes to
   your account but that are missing from the dataset.
+- `data/raw/issues/unresolved.json` lists the issue keys that could not be loaded, with a reason:
+  `not_found` is mostly typos and deleted issues, `failed` means re-run `issues`, and many keys of one
+  live project mean the token cannot see that project.
 
-After a config fix, re-run `commits projects verify`.
+After a config fix, re-run `commits projects verify issues`.
 
 ## Development
 
@@ -132,7 +162,11 @@ internal/scrape/        the stages and git mirroring: the core, tool-neutral
 internal/codehost/      code host interface + github adapter
 internal/catalog/       catalog interface + backstage adapter
 internal/tracker/       issue tracker interface + jira adapter
+internal/wiki/          wiki interface + confluence adapter
+internal/atlassian/     the Atlassian Cloud client the jira and confluence adapters share; adf/ renders rich text
+internal/envfile/       .env loading
 internal/doc/           raw documents: key-ordered JSON objects, YAML parsing
+internal/par/           bounded parallel work
 internal/logx/          progress logging
 docs/data-schema.md     the output contract (compiled in; written to data/raw/README.md)
 config.example.json     config template with acme defaults (compiled in; used by init)
@@ -142,5 +176,5 @@ data/raw/               output: personal, gitignored (start at index.json)
 cache/                  git mirrors + status, gitignored, safe to delete
 ```
 
-`data/` holds content from private repos (commit messages, PR descriptions, READMEs) about one
-person. Keep it out of git and share it deliberately.
+`data/` holds content from private repos, issues and wiki pages (commit messages, PR descriptions,
+READMEs, comments) about one person. Keep it out of git and share it deliberately.

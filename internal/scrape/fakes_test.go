@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"path"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -12,11 +13,12 @@ import (
 	"github.com/marleypowell/footprint/internal/catalog"
 	"github.com/marleypowell/footprint/internal/codehost"
 	"github.com/marleypowell/footprint/internal/tracker"
+	"github.com/marleypowell/footprint/internal/wiki"
 )
 
 // In-memory adapters: the second adapter at each seam. They deliberately use another tool's
-// conventions (GitLab-style hosting, Cortex-style descriptors, Linear-style keys) so the tests
-// show the core assumes nothing about GitHub, Backstage or Jira.
+// conventions (GitLab-style hosting, Cortex-style descriptors, Linear-style issues, a Notion-style
+// wiki) so the tests show the core assumes nothing about GitHub, Backstage, Jira or Confluence.
 
 type fakeHost struct {
 	remotes    map[string]string // repo name -> local repository to fetch from
@@ -114,12 +116,19 @@ func (fakeCatalog) Scan(ctx context.Context, src catalog.Source, resolve catalog
 	return res, nil
 }
 
-// fakeTracker finds Linear-style ENG-123 keys.
-type fakeTracker struct{}
+// fakeTracker finds Linear-style ENG-123 keys and serves issues from memory. An issue moved to
+// another team keeps answering to its old identifier, as in Linear.
+type fakeTracker struct {
+	account  tracker.Account
+	assigned []string
+	issues   []tracker.Issue
+}
+
+var _ tracker.Tracker = (*fakeTracker)(nil)
 
 var linearKeyRE = regexp.MustCompile(`(?i)\beng-(\d+)\b`)
 
-func (fakeTracker) Keys(texts ...string) []string {
+func (f *fakeTracker) Keys(texts ...string) []string {
 	set := map[string]bool{}
 	for _, text := range texts {
 		for _, m := range linearKeyRE.FindAllStringSubmatch(text, -1) {
@@ -134,6 +143,51 @@ func (fakeTracker) Keys(texts ...string) []string {
 	return keys
 }
 
-func (fakeTracker) Projects() []tracker.Project {
+func (f *fakeTracker) Projects() []tracker.Project {
 	return []tracker.Project{{Key: "ENG", Name: "Engineering", Type: "team"}}
+}
+
+func (f *fakeTracker) Account(context.Context) (tracker.Account, error) { return f.account, nil }
+
+func (f *fakeTracker) Assigned(_ context.Context, account tracker.Account) ([]string, error) {
+	if account.ID != f.account.ID {
+		return nil, nil
+	}
+	return f.assigned, nil
+}
+
+func (f *fakeTracker) Issues(_ context.Context, keys []string) ([]tracker.Issue, []tracker.Missing, error) {
+	var found []tracker.Issue
+	missing := []tracker.Missing{}
+	seen := map[string]bool{}
+	for _, key := range keys {
+		i := slices.IndexFunc(f.issues, func(issue tracker.Issue) bool {
+			return strings.EqualFold(issue.Key, key) || slices.Contains(issue.PreviousKeys, strings.ToUpper(key))
+		})
+		switch {
+		case i < 0:
+			missing = append(missing, tracker.Missing{Key: key, Reason: tracker.NotFound})
+		case !seen[f.issues[i].Key]:
+			seen[f.issues[i].Key] = true
+			found = append(found, f.issues[i])
+		}
+	}
+	return found, missing, nil
+}
+
+// fakeWiki serves Notion-style content: pages and databases in teamspaces, with UUIDs for IDs.
+type fakeWiki struct {
+	account wiki.Account
+	pages   []wiki.Page
+}
+
+var _ wiki.Wiki = (*fakeWiki)(nil)
+
+func (f *fakeWiki) Account(context.Context) (wiki.Account, error) { return f.account, nil }
+
+func (f *fakeWiki) Pages(_ context.Context, account wiki.Account) ([]wiki.Page, error) {
+	if account.ID != f.account.ID {
+		return nil, nil
+	}
+	return f.pages, nil
 }

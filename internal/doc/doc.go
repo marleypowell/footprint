@@ -61,6 +61,62 @@ func (o *Object) MarshalJSON() ([]byte, error) {
 	return b.Bytes(), nil
 }
 
+// UnmarshalJSON decodes a JSON object keeping its key order, nested objects included (as *Object).
+func (o *Object) UnmarshalJSON(b []byte) error {
+	dec := json.NewDecoder(bytes.NewReader(b))
+	v, err := decodeJSON(dec)
+	if err != nil {
+		return err
+	}
+	obj, ok := v.(*Object)
+	if !ok {
+		return fmt.Errorf("doc: want a JSON object, got %T", v)
+	}
+	*o = *obj
+	return nil
+}
+
+// decodeJSON reads one value: objects as *Object, arrays as []any, scalars as encoding/json does.
+func decodeJSON(dec *json.Decoder) (any, error) {
+	tok, err := dec.Token()
+	if err != nil {
+		return nil, err
+	}
+	delim, ok := tok.(json.Delim)
+	if !ok {
+		return tok, nil
+	}
+	switch delim {
+	case '{':
+		obj := NewObject()
+		for dec.More() {
+			key, err := dec.Token()
+			if err != nil {
+				return nil, err
+			}
+			v, err := decodeJSON(dec)
+			if err != nil {
+				return nil, err
+			}
+			obj.Set(key.(string), v)
+		}
+		_, err := dec.Token() // }
+		return obj, err
+	case '[':
+		arr := []any{}
+		for dec.More() {
+			v, err := decodeJSON(dec)
+			if err != nil {
+				return nil, err
+			}
+			arr = append(arr, v)
+		}
+		_, err := dec.Token() // ]
+		return arr, err
+	}
+	return nil, fmt.Errorf("doc: unexpected %v", delim)
+}
+
 // Marshal encodes v as compact JSON without HTML escaping: the output is data, not web content.
 func Marshal(v any) ([]byte, error) {
 	var b bytes.Buffer

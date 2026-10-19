@@ -1,4 +1,5 @@
-// Command footprint collects raw data about one person's work across an org's repositories.
+// Command footprint collects raw data about one person's work across an org: commits, pull
+// requests, issues and wiki pages.
 package main
 
 import (
@@ -10,12 +11,16 @@ import (
 	"os"
 	"os/signal"
 	"slices"
+	"strings"
 	"syscall"
 
+	"github.com/marleypowell/footprint/internal/envfile"
+	"github.com/marleypowell/footprint/internal/logx"
 	"github.com/marleypowell/footprint/internal/scrape"
 )
 
-const usage = `footprint collects raw data about one person's work across an org's repositories.
+const usage = `footprint collects raw data about one person's work across an org: commits, pull
+requests, issues and wiki pages.
 
 Usage:
   footprint init --org <org>          write the config for the authenticated user
@@ -35,9 +40,15 @@ Stages, in the order "all" runs them:
   projects    per-repo "what is this" bundle + the index       -> <data>/repos/<repo>/project.json,
                                                                   <data>/index.json
   verify      cross-check against the host's attribution       -> <data>/org/verification.json
+  issues      issues ever assigned to the user, or named in their commits and PRs, with
+              comments, change history and worklogs            -> <data>/issues/<project>.jsonl
+  pages       wiki pages, blog posts etc. the user created or edited, with versions
+              and the body as Markdown                         -> <data>/wiki/<space>.jsonl
 
-The code host, catalog and issue tracker are set in the config (code_host, catalog,
-issue_tracker); supported: github, backstage, jira.
+The code host, catalog, issue tracker and wiki are set in the config (code_host, catalog,
+issue_tracker, wiki); supported: github, backstage, jira, confluence. Jira and Confluence
+authenticate with ATLASSIAN_EMAIL and ATLASSIAN_API_TOKEN, read from the environment or from
+the .env file (see .env.example and README.md).
 
 Flags (anywhere on the command line):
 `
@@ -45,6 +56,8 @@ Flags (anywhere on the command line):
 func main() {
 	flags := flag.NewFlagSet("footprint", flag.ExitOnError)
 	var opts scrape.Options
+	var envPath string
+	flags.StringVar(&envPath, "env", ".env", "file of KEY=value tokens loaded into the environment (variables already set win)")
 	flags.StringVar(&opts.ConfigPath, "config", "config.json", "personal config file (identity, org)")
 	flags.StringVar(&opts.DataDir, "data", "data/raw", "output directory")
 	flags.StringVar(&opts.CacheDir, "cache", "cache", "git mirrors and run state")
@@ -73,8 +86,20 @@ func main() {
 		os.Exit(2)
 	}
 
+	loaded, err := envfile.Load(envPath)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "footprint:", err)
+		os.Exit(1)
+	}
+	if len(loaded) > 0 {
+		logx.Printf("env: loaded %s from %s", strings.Join(loaded, ", "), envPath)
+		if envfile.TooOpen(envPath) {
+			logx.Printf("env: WARNING: %s holds tokens and other users can read it; run chmod 600 %s", envPath, envPath)
+		}
+	}
+
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	err := run(ctx, opts, stages)
+	err = run(ctx, opts, stages)
 	stop()
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "footprint:", err)

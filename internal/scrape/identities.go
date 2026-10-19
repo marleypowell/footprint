@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+
+	"github.com/marleypowell/footprint/internal/par"
 )
 
 type identityKey struct{ role, name, email string }
@@ -73,7 +75,7 @@ func (h *harness) identities(ctx context.Context) error {
 		return err
 	}
 	results := make([]*identityCounts, len(repos))
-	err = forEach(ctx, 8, repos, func(ctx context.Context, i int, r Repo) error {
+	err = par.ForEach(ctx, 8, repos, func(ctx context.Context, i int, r Repo) error {
 		found, err := h.scanIdentities(ctx, r)
 		results[i] = found
 		return err

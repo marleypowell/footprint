@@ -9,6 +9,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/marleypowell/footprint/internal/par"
 )
 
 // MirrorStatus records one repo's last mirror attempt (<cache>/mirror_status.json).
@@ -50,7 +52,7 @@ func (h *harness) mirror(ctx context.Context) error {
 	results := make(chan MirrorStatus)
 	go func() {
 		defer close(results)
-		_ = forEach(ctx, h.cfg.Mirror.Parallelism, repos, func(ctx context.Context, _ int, r Repo) error {
+		_ = par.ForEach(ctx, h.cfg.Mirror.Parallelism, repos, func(ctx context.Context, _ int, r Repo) error {
 			results <- h.mirrorOne(ctx, r)
 			return nil // failures are recorded and can be retried with --only
 		})
