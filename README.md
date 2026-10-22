@@ -3,8 +3,8 @@
 Collects raw data about **your** work across an org: every commit you made (full message and
 per-file stats) from the start of each repo's history, the pull requests you authored, what each
 project is (service catalog entities, READMEs, CLAUDE.md, code host metadata), the issues you were
-assigned or that your commits and PRs name (with comments, history and worklogs), and the wiki pages
-you created or edited.
+assigned or that your commits and PRs name (with comments, history and worklogs), the architecture
+decision records (ADRs) you committed to, and the wiki pages you created or edited.
 
 Collection writes raw JSON, and a separate aggregation phase decides what counts and makes something
 of it (a CV, a performance review, a promotion case, ...): see [Using the data](#using-the-data).
@@ -83,7 +83,7 @@ Then open `data/raw/index.json`, and check `data/raw/org/verification.json`:
 | `prs` | your PRs with their commits and files | GitHub: GraphQL search, ~4 min |
 | `commits` | your commits on any ref | local git, ~30 s |
 | `catalog` | every catalog entity on every default branch | local git only |
-| `projects` | per-repo `project.json`, docs, `data/raw/index.json`, and the issue tracker's projects | local, plus one project listing; indexes `issues/` and `wiki/` too |
+| `projects` | per-repo `project.json`, docs, decision records (ADRs) you committed to, `data/raw/index.json`, and the issue tracker's projects | local, plus one project listing; indexes `issues/` and `wiki/` too |
 | `verify` | compares with the code host's own commit attribution | GitHub: ~3 min (search rate limits) |
 | `issues` | issues ever assigned to you, or named in your commits and PRs, with comments, history and worklogs, plus the stories, epics and initiatives above them | Jira: one request per issue, a few minutes for thousands; skipped without an `issue_tracker` section |
 | `pages` | wiki content you created or edited, with versions and the body as Markdown | Confluence: CQL search, then each page; skipped without a `wiki` section |
@@ -182,11 +182,12 @@ bin/footprint facts -from 2025-04-01 -to 2026-03-31   # ... and that window's vi
 bin/footprint check data/drafts/review.md             # citations and numbers in a note or draft
 ```
 
-- `facts` deduplicates the changes, groups the work into items (features under their epics, docs,
-  and per-quarter buckets of work naming no issue), and counts. It writes `overview.md`, `facts.json`,
-  one JSONL file per kind of record, an evidence pack per item, `catalogue.md`, and `todo.txt`: the
-  notes still to write. It reads only `data/raw`, the notes and the context (no config or tokens),
-  so it still works on a copy of the dataset once access to the tools has ended.
+- `facts` deduplicates the changes, groups the work into items (features under their epics, docs
+  (wiki pages and ADRs), and per-quarter buckets of work naming no issue), and counts. It writes
+  `overview.md`, `facts.json`, one JSONL file per kind of record, an evidence pack per item,
+  `catalogue.md`, and `todo.txt`: the notes still to write. It reads only `data/raw`, the notes and
+  the context (no config or tokens), so it still works on a copy of the dataset once access to the
+  tools has ended.
 - The agent writes one note per work item, from its pack, in `data/notes/`; a note is reused until
   its pack changes. It drafts documents in `data/drafts/` from the notes and the facts.
 - `check` fails a note or draft whose citations (`[[PAY-62]]`, `[[repo#123]]`) name nothing, and

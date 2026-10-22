@@ -172,12 +172,33 @@ func fixture() *Raw {
 			Body: ptr(strings.Repeat("word ", 300))},
 			Roles: []string{"editor"}, UserVersions: 1, IssueKeys: []string{}},
 	}
+	claude := collect.Signature{Name: "Claude", Email: "noreply@anthropic.com"}
+	version := func(sha, path string, author collect.Signature, date string, roles ...string) collect.DecisionVersion {
+		return collect.DecisionVersion{SHA: sha, Path: path, Author: sig(author, date), Subject: "docs", Roles: append([]string{}, roles...)}
+	}
+	decisions := []collect.Decision{
+		// the user's, in c1 and by their agent in PR 5, renamed since by a colleague
+		{Repo: "app", Path: "docs/decisions/0001-use-queues.md", URL: "https://code.example/org/app/blob/main/docs/decisions/0001-use-queues.md",
+			Title: "Use queues", IssueKeys: []string{"ENG-2"}, CreatedAt: "2024-01-02T10:00:00+01:00", Body: strings.Repeat("word ", 220) + "For ENG-2.",
+			Versions: []collect.DecisionVersion{
+				version("c1", "docs/decisions/001-use-queues.md", jane, "2024-01-02T10:00:00+01:00", "author", "committer"),
+				version("c9", "docs/decisions/001-use-queues.md", claude, "2024-01-04T11:00:00Z", "pr-author"),
+				version("o1", "docs/decisions/0001-use-queues.md", other, "2024-03-05T10:00:00Z"),
+			}},
+		// a colleague's, that the user touched once
+		{Repo: "app", Path: "docs/decisions/0002-theirs.md", URL: "https://code.example/org/app/blob/main/docs/decisions/0002-theirs.md",
+			Title: "Theirs", IssueKeys: []string{}, CreatedAt: "2023-11-01T10:00:00Z", Body: strings.Repeat("word ", 400),
+			Versions: []collect.DecisionVersion{
+				version("o2", "docs/decisions/0002-theirs.md", other, "2023-11-01T10:00:00Z"),
+				version("c7", "docs/decisions/0002-theirs.md", jane, "2024-02-01T10:00:00Z", "author", "committer"),
+			}},
+	}
 	return &Raw{
 		Index: collect.Index{Identity: collect.IdentityConfig{Emails: []string{"jane@example.com"}, Names: []string{"Jane Doe"}},
 			Sources: collect.Sources{CodeHost: "fakehost", Catalog: "fakecatalog", IssueTracker: ptr("faketracker"), Wiki: ptr("fakewiki")},
 			Repos:   []collect.IndexRepo{{Name: "app", URL: "https://code.example/org/app", FirstCommitInRepo: ptr("2024-01-02T09:00:00Z")}}},
 		Projects: []collect.Project{{Name: "app", URL: "https://code.example/org/app", CodeHost: codehost.Repo{Name: "app", DefaultBranch: &mainBranch}}},
-		Commits:  commits, PRs: prs, Issues: issues, Pages: pages,
+		Commits:  commits, PRs: prs, Decisions: decisions, Issues: issues, Pages: pages,
 		IssueProjects: []tracker.Project{{Key: "ENG", Name: "Engineering", PreviousKeys: []string{"OLD"}}},
 	}
 }
@@ -231,7 +252,7 @@ func TestCountingRules(t *testing.T) {
 	check(t, "totals", all, Totals{
 		ActiveDays: all.ActiveDays, ChangesLanded: 3, PRsOpened: 3, PRsMerged: 2, MigratedPRsMerged: 1, MergedForOthers: 1,
 		Commits: 6, CommitsCoAuthored: 1, AgentCommits: 1, LinesAdded: 60, LinesDeleted: 7, Repos: 1, IssuesDone: 2, IssuesWorked: 3,
-		IssuesRaised: 1, PagesCreated: 1, PagesEdited: 2, DocsWritten: 1, Items: all.Items,
+		IssuesRaised: 1, PagesCreated: 1, PagesEdited: 2, DocsWritten: 2, ADRsWritten: 1, Items: all.Items,
 	})
 
 	// Every event counts toward one item, or none: items (initiatives aside) add up to the totals.
@@ -259,7 +280,7 @@ func TestIssues(t *testing.T) {
 	it := f.items["ENG-1"]
 	check(t, "feature", []any{it.Kind, it.Title, it.Initiative, it.Issues}, []any{KindFeature, "Fast search", &Ref{ID: "ENG-10", Title: "Search"}, []string{"ENG-1", "ENG-4"}})
 	check(t, "feature sub-tasks", *it.Subtasks, Subtasks{Total: 2, DoneByMe: 1})
-	check(t, "feature changes", []any{it.Changes, it.Docs}, []any{[]string{"app@c1", "app#5", "app@c12"}, []string{"doc+100"}})
+	check(t, "feature changes", []any{it.Changes, it.Docs}, []any{[]string{"app@c1", "app#5", "app@c12"}, []string{"doc+100", "adr+app+0001-use-queues"}})
 	ini := f.items["ENG-10"]
 	check(t, "initiative", []any{ini.Kind, ini.Features, ini.Involvement}, []any{KindInitiative, []string{"ENG-1"}, "contributed"})
 	check(t, "initiative totals include its features'", ini.Totals.PRsMerged, it.Totals.PRsMerged)
@@ -296,6 +317,29 @@ func TestDocs(t *testing.T) {
 	d, e := f.docs["100"], f.docs["101"]
 	check(t, "written", []any{d.Share, d.Words >= substantialWords, d.Substantial, d.Item, d.Items}, []any{100, true, true, "doc+100", []string{"ENG-1"}})
 	check(t, "edited once", []any{e.Share, e.Substantial, e.Item}, []any{25, false, ""})
+
+	a, b := f.docs["app/docs/decisions/0001-use-queues.md"], f.docs["app/docs/decisions/0002-theirs.md"]
+	check(t, "ADR: the user's commit and their agent's", []any{a.Ref, a.Type, a.CreatedAt, a.CreatedByMe, a.MyVersions, a.Versions, a.Share},
+		[]any{"adr+app+0001-use-queues", "adr", "2024-01-02T09:00:00Z", true, 2, 3, 66})
+	check(t, "ADR: substantial at its own length", []any{a.Words < substantialWords, a.Substantial, a.Item}, []any{true, true, "adr+app+0001-use-queues"})
+	check(t, "ADR: the changes that wrote it, and theirs and its issues' items", []any{a.Changes, a.Items, a.First, a.Last},
+		[]any{[]string{"app@c1", "app#5"}, []string{"ENG-1", "ENG-2"}, "2024-01-02", "2024-01-04"})
+	check(t, "ADR: a colleague's", []any{b.CreatedByMe, b.Share, b.Substantial, b.Item, b.Changes}, []any{false, 50, false, "", []string{"app@c7"}})
+	it := f.items[a.Ref]
+	check(t, "ADR item", []any{it.Kind, it.Type, it.AlsoChanges, it.ActiveDays}, []any{KindDoc, "adr", []string{"app@c1", "app#5"}, 2})
+	pack := string(renderPack(it.pack, it.Pack))
+	for _, want := range []string{"## The decision record", "- app: docs/decisions/0001-use-queues.md", "created by you; 2 of 3 commits yours",
+		"- written in app#5 · ENG-1: feature"} {
+		if !strings.Contains(pack, want) {
+			t.Errorf("ADR pack has no %q:\n%s", want, pack)
+		}
+	}
+	if pack := string(renderPack(f.items["ENG-1"].pack, f.items["ENG-1"].Pack)); !strings.Contains(pack, "- adr+app+0001-use-queues · Use queues") {
+		t.Errorf("a feature's pack should name the ADR written in its changes:\n%s", pack)
+	}
+	check(t, "refs: by path where file names clash", (&Facts{raw: &Raw{Decisions: []collect.Decision{
+		{Repo: "web", Path: "apps/a/docs/adr/0001-x.md"}, {Repo: "web", Path: "apps/b/docs/adr/0001-x.md"}, {Repo: "a+b", Path: "docs/adr/0001-x.md"},
+	}}}).decisionRefs(), []string{"adr+web+apps%2Fa%2Fdocs%2Fadr%2F0001-x", "adr+web+apps%2Fb%2Fdocs%2Fadr%2F0001-x", "adr+a%2Bb+0001-x"})
 }
 
 func TestEffortAndIDs(t *testing.T) {
@@ -357,8 +401,8 @@ func TestNotes(t *testing.T) {
 	for _, it := range f.Items {
 		states[it.ID] = it.Note
 	}
-	check(t, "note states", []string{states["ENG-1"], states["ENG-10"], states["ENG-2"], states["doc+100"]},
-		[]string{NoteCurrent, NoteStale, NoteInvalid, NoteMissing})
+	check(t, "note states", []string{states["ENG-1"], states["ENG-10"], states["ENG-2"], states["doc+100"], states["adr+app+0001-use-queues"]},
+		[]string{NoteCurrent, NoteStale, NoteInvalid, NoteMissing, NoteMissing})
 	check(t, "orphans", f.orphans, []string{"GONE-1"})
 	todo := string(f.todo(All))
 	if !strings.Contains(todo, "stale\tENG-10\t") || !strings.Contains(todo, "invalid\tENG-2\t") || !strings.Contains(todo, "orphan\tGONE-1.md") ||
@@ -392,7 +436,7 @@ func TestCheck(t *testing.T) {
 	head := "---\nitem: ENG-1\ninputs: " + f.items["ENG-1"].Pack + "\n---\n"
 	var body strings.Builder
 	for _, s := range NoteSections {
-		body.WriteString("\n## " + s + "\n\nShipped fast search [[ENG-1]] with [[app#5]] and [[app@c1]], see [[doc+100]] and [[ENG-4]].\n")
+		body.WriteString("\n## " + s + "\n\nShipped fast search [[ENG-1]] with [[app#5]] and [[app@c1]], see [[doc+100]], [[adr+app+0001-use-queues]] and [[ENG-4]].\n")
 	}
 	check(t, "a good note", run(head+body.String()), []string(nil))
 	check(t, "a good note with Windows line endings", run(strings.ReplaceAll(head+body.String(), "\n", "\r\n")), []string(nil))
@@ -441,6 +485,16 @@ func TestCheck(t *testing.T) {
 			t.Errorf("finding %d = %q, want prefix %q", i, findings[i], want[i])
 		}
 	}
+	adr := f.items["adr+app+0001-use-queues"]
+	var adrNote []string
+	for _, fd := range f.Check("notes/adr+app+0001-use-queues.md", "---\nitem: "+adr.ID+"\ninputs: "+adr.Pack+"\n---\n"+
+		strings.ReplaceAll(body.String(), "[[doc+100]], ", "")) {
+		adrNote = append(adrNote, fd.String())
+	}
+	if s := strings.Join(adrNote, "\n"); !strings.Contains(s, "[[ENG-4]] is not part of") || strings.Contains(s, "[[app#5]]") ||
+		strings.Contains(s, "[[app@c1]]") || strings.Contains(s, "[[ENG-1]]") {
+		t.Errorf("a note on an ADR cites the changes that wrote it, and the items they count toward:\n%s", s)
+	}
 	text := "---\nwindow: all\n---\n\nShipped search [[ENG-1]], and [[app#5|the PR]].\n"
 	check(t, "plain", f.Final(text, false), "Shipped search, and the PR.\n")
 	check(t, "links", f.Final(text, true), "Shipped search [ENG-1](https://tracker.example/browse/ENG-1), and [the PR](https://code.example/org/app/pull/5).\n")
@@ -474,6 +528,9 @@ func TestDeterministic(t *testing.T) {
 	r.Shuffle(len(shuffled.PRs), func(i, j int) { shuffled.PRs[i], shuffled.PRs[j] = shuffled.PRs[j], shuffled.PRs[i] })
 	r.Shuffle(len(shuffled.Issues), func(i, j int) { shuffled.Issues[i], shuffled.Issues[j] = shuffled.Issues[j], shuffled.Issues[i] })
 	r.Shuffle(len(shuffled.Pages), func(i, j int) { shuffled.Pages[i], shuffled.Pages[j] = shuffled.Pages[j], shuffled.Pages[i] })
+	r.Shuffle(len(shuffled.Decisions), func(i, j int) {
+		shuffled.Decisions[i], shuffled.Decisions[j] = shuffled.Decisions[j], shuffled.Decisions[i]
+	})
 	b := write(shuffled)
 	if len(a) != len(b) {
 		t.Fatalf("%d files, then %d", len(a), len(b))
@@ -513,7 +570,8 @@ func TestLoad(t *testing.T) {
 		}
 	}
 	raw.Index.Repos[0].Dir = "repos/.app"
-	raw.Index.Repos[0].Files = map[string]string{"commits": "repos/.app/commits.jsonl", "prs": "repos/.app/prs.jsonl"}
+	raw.Index.Repos[0].Files = map[string]string{"commits": "repos/.app/commits.jsonl", "prs": "repos/.app/prs.jsonl",
+		"decisions": "repos/.app/decisions.jsonl"}
 	// a repo without PRs: the index lists no prs file for it
 	lib := commit("l1", "2024-01-02T10:00:00Z", jane, []string{"author", "committer"}, "lib work", func(c *collect.Commit) { c.Repo = "lib" })
 	raw.Index.Repos = append(raw.Index.Repos, collect.IndexRepo{Name: "lib", Dir: "repos/lib", Files: map[string]string{"commits": "repos/lib/commits.jsonl"}})
@@ -525,6 +583,7 @@ func TestLoad(t *testing.T) {
 	write("repos/.app/project.json", raw.Projects[0], false)
 	write("repos/.app/commits.jsonl", raw.Commits, true)
 	write("repos/.app/prs.jsonl", raw.PRs, true)
+	write("repos/.app/decisions.jsonl", raw.Decisions, true)
 	write("issues/ENG.jsonl", raw.Issues, true)
 	write("wiki/ENG.jsonl", raw.Pages, true)
 	write("org/issue_projects.json", raw.IssueProjects, false)
@@ -532,8 +591,8 @@ func TestLoad(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	check(t, "loaded", []int{len(got.Projects), len(got.Commits), len(got.PRs), len(got.Issues), len(got.Pages), len(got.IssueProjects)},
-		[]int{2, len(raw.Commits) + 1, len(raw.PRs), len(raw.Issues), len(raw.Pages), 1})
+	check(t, "loaded", []int{len(got.Projects), len(got.Commits), len(got.PRs), len(got.Decisions), len(got.Issues), len(got.Pages), len(got.IssueProjects)},
+		[]int{2, len(raw.Commits) + 1, len(raw.PRs), len(raw.Decisions), len(raw.Issues), len(raw.Pages), 1})
 	if _, err := Load(t.TempDir()); err == nil || !strings.Contains(err.Error(), "no index.json") {
 		t.Errorf("want a clear error without a dataset, got %v", err)
 	}

@@ -127,7 +127,11 @@ func (f *Facts) evidence(it *Item) map[string]bool {
 	if it.Initiative != nil {
 		set[it.Initiative.ID] = true
 	}
-	for _, list := range [][]string{it.Issues, it.Features, it.Changes, it.AlsoChanges, it.Docs} {
+	lists := [][]string{it.Issues, it.Features, it.Changes, it.AlsoChanges, it.Docs}
+	if it.doc != nil {
+		lists = append(lists, it.doc.Items) // what a doc names, or an ADR was written for
+	}
+	for _, list := range lists {
 		for _, id := range list {
 			set[id] = true
 		}
@@ -228,7 +232,7 @@ func (c *checker) paragraph(lines []string, idx []int) {
 			id, url := c.f.resolve(ref)
 			switch {
 			case id == "":
-				c.add(i+1, true, "[[%s]] names nothing in the dataset (an item, issue key, repo#PR, repo@sha or doc+id)", ref)
+				c.add(i+1, true, "[[%s]] names nothing in the dataset (an item, issue key, repo#PR, repo@sha, doc+id or adr+repo+name)", ref)
 			case c.allowed != nil && !c.allowed[id]:
 				c.add(i+1, true, "[[%s]] is not part of %s's evidence: a note cites only its own item's records", ref, c.note.ID)
 			default:

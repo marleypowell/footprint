@@ -35,6 +35,7 @@ repos/<repo>/
   docs/<path>                 README / CLAUDE.md / AGENTS.md / docs index / package.json from the default branch
   commits.jsonl               the user's commits (one JSON object per line, oldest first)
   prs.jsonl                   pull requests authored by the user (one per line, by number)
+  decisions.jsonl             decision records (ADRs) on the default branch the user committed to (one per line, by path)
 issues/
   <project>.jsonl             issues ever assigned to the user or named in their git work, and the issues
                               above those (one per line, by number)
@@ -129,6 +130,31 @@ Pull requests (merge requests, on GitLab) whose author is the user, in any state
 | `activity` | headline counts and first/last dates computed from `commits.jsonl` and `prs.jsonl` (`issue_keys` is a count) |
 
 For repos with no catalog entity and no description, `docs/` and `tree_top` are the only description.
+
+## decisions.jsonl
+
+Architecture decision records on the repo's default branch whose history has a commit in
+`commits.jsonl` (any role). A decision record is a Markdown file in a directory named `adr`, `adrs`,
+`decisions`, `decision-records` or `architecture-decisions`, at any depth (the adr-tools, MADR and
+log4brains layouts), or a file named `ADR-<n>…`; the `README`, `index`, `toc` and template files kept
+beside them are not. `index.json` -> `repos[].files.decisions` names the file when the repo has one,
+and `totals.decisions` counts them. The `projects` stage writes it.
+
+| field | meaning |
+|---|---|
+| `repo`, `path`, `url` | the file on the default branch, and its page on the code host |
+| `title` | its first level-one heading, after any front matter; else the file name |
+| `issue_keys` | issue tracker keys the title and body name, restricted to the tracker's real projects as for commits; empty without an issue tracker |
+| `created_at` | the author date of its first version |
+| `versions` | every non-merge commit on the default branch that changed it, following renames, oldest first: `{sha, path, author, subject, roles}`. `path` is the file's name in that commit; `roles` are the user's roles in it as in `commits.jsonl`, `[]` when it is not one of the user's commits |
+| `bytes`, `truncated`, `body` | the current text, cut at 200,000 bytes, as written (front matter included) |
+
+Things the aggregation phase will want to handle:
+
+- **Authorship is per commit.** A squash-merged PR is one version, whoever wrote its commits; a
+  colleague's squash merge naming the user as co-author is `co-author`. Agents' commits in the
+  user's PRs are `pr-author`. MADR front matter often lists the `deciders`.
+- **Only what landed.** A record still in an open PR, or deleted since, is not here.
 
 ## catalog/entities.jsonl
 
@@ -244,6 +270,7 @@ Things the aggregation phase will want to handle:
 Not covered:
 - Repos the account cannot see, or deleted repos; repos never migrated to the current host.
 - Commits that only ever existed on branches deleted without a PR, or force-pushed away.
+- Decision records outside the layouts above, and those not on a default branch.
 - Commits by agents (e.g. Claude Code on the web, `claude/*` branches) that neither name the user nor
   sit in a PR the user authored: nothing in git ties them to the user.
 - Reviews of other people's PRs, and PR comments.

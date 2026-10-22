@@ -85,6 +85,9 @@ func TestConventions(t *testing.T) {
 	if got := h.CommitURL(repo, "abc123"); got != "https://github.com/acme/pay/commit/abc123" {
 		t.Errorf("CommitURL = %q", got)
 	}
+	if got := h.FileURL(repo, "release/1", "docs/adr/0001 why.md"); got != "https://github.com/acme/pay/blob/release/1/docs/adr/0001%20why.md" {
+		t.Errorf("FileURL = %q", got)
+	}
 	r := h.Remote(repo)
 	if r.URL != "https://github.com/acme/pay.git" || r.PullRequestRefspec != "+refs/pull/*/head:refs/pull/*/head" {
 		t.Errorf("Remote = %+v", r)

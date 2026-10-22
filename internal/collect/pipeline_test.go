@@ -118,6 +118,18 @@ func TestPipeline(t *testing.T) {
 	f.git(me, "merge", "--no-ff", "-q", "-m", "Merge branch 'side'\n\nSee merge request org/repo!7", "side")
 	merge := f.git(me, "rev-parse", "HEAD")
 
+	// Decision records: the user's, edited by a colleague and renamed since, with an index beside
+	// it; and a colleague's alone.
+	f.write("docs/decisions/001-use-queues.md", "---\nstatus: accepted\n---\n# Use queues\n\nFor ENG-42, we queue.\n")
+	f.write("docs/decisions/README.md", "# Decisions\n")
+	decided := f.commit(me, "docs: decide on queues")
+	f.write("docs/decisions/001-use-queues.md", "---\nstatus: accepted\n---\n# Use queues\n\nFor ENG-42, we queue messages.\n")
+	edited := f.commit(other, "docs: tighten the queues decision")
+	f.git(me, "mv", "docs/decisions/001-use-queues.md", "docs/decisions/0001-use-queues.md")
+	renumbered := f.commit(me, "docs: number decisions with four digits")
+	f.write("docs/adr/0002-theirs.md", "# Theirs\n")
+	f.commit(other, "docs: another decision")
+
 	mainBranch := "main"
 	host := &fakeHost{
 		remotes: map[string]string{"repo": f.dir},
@@ -219,8 +231,8 @@ func TestPipeline(t *testing.T) {
 	if !sort.SliceIsSorted(rows, func(i, j int) bool { return parseTime(rows[i].Author.Date).Before(parseTime(rows[j].Author.Date)) }) {
 		t.Error("rows are not in author-date order")
 	}
-	if _, ok := got[unrelated]; ok || len(rows) != 8 {
-		t.Errorf("want the 8 commits involving the user, got %d (unrelated included: %v)", len(rows), ok)
+	if _, ok := got[unrelated]; ok || len(rows) != 10 {
+		t.Errorf("want the 10 commits involving the user, got %d (unrelated included: %v)", len(rows), ok)
 	}
 	c := got[authored]
 	check("authored roles", c.Roles, []string{"author", "committer"})
@@ -283,7 +295,26 @@ func TestPipeline(t *testing.T) {
 		t.Errorf("an undefined ref should be null in context: %+v", project.Catalog.Context)
 	}
 	check("project docs", project.Docs[0].SavedAs, "docs/README.md")
-	check("project activity authored", project.Activity.Authored, 5)
+	check("project activity authored", project.Activity.Authored, 7)
+
+	// decisions.jsonl: the user's decision records on the default branch, with every version
+	decisions, err := readJSONL[Decision](filepath.Join(raw, "repos", "repo", "decisions.jsonl"))
+	if err != nil || len(decisions) != 1 {
+		t.Fatalf("decisions: %+v %v", decisions, err)
+	}
+	d := decisions[0]
+	check("decision", []any{d.Path, d.Title, d.IssueKeys, d.URL}, []any{"docs/decisions/0001-use-queues.md", "Use queues", []string{"ENG-42"},
+		"https://code.example/org/repo/-/blob/main/docs/decisions/0001-use-queues.md"})
+	var history []string
+	for _, v := range d.Versions {
+		history = append(history, v.SHA+" "+v.Path+" "+strings.Join(v.Roles, ","))
+	}
+	check("decision versions, oldest first, through the rename", history, []string{
+		decided + " docs/decisions/001-use-queues.md author,committer",
+		edited + " docs/decisions/001-use-queues.md ",
+		renumbered + " docs/decisions/0001-use-queues.md author,committer",
+	})
+	check("decision created", d.CreatedAt, d.Versions[0].Author.Date)
 
 	// index.json and org files
 	var index Index
@@ -292,7 +323,7 @@ func TestPipeline(t *testing.T) {
 	check("index login", index.Login, "jdoe")
 	check("index catalog summary", index.Repos[0].Catalog, []IndexEntity{{Ref: "service:repo", Category: "component",
 		Title: ptr("Repo service"), Description: ptr("Does things")}})
-	check("index totals", index.Totals.Commits, 8)
+	check("index totals", []int{index.Totals.Commits, index.Totals.Decisions}, []int{10, 1})
 	var projects []map[string]any
 	read("org/issue_projects.json", &projects)
 	check("issue projects", projects[0]["key"], "ENG")
@@ -311,7 +342,7 @@ func TestPipeline(t *testing.T) {
 		t.Error("schema doc not written")
 	}
 	b, _ := json.Marshal(index.Repos[0].Files)
-	check("index files", string(b), `{"commits":"repos/repo/commits.jsonl","prs":"repos/repo/prs.jsonl"}`)
+	check("index files", string(b), `{"commits":"repos/repo/commits.jsonl","decisions":"repos/repo/decisions.jsonl","prs":"repos/repo/prs.jsonl"}`)
 
 	// issues/: assigned at some point (by the tracker's search, or its history), or named in git work
 	records, err := readJSONL[IssueRecord](filepath.Join(raw, "issues", "ENG.jsonl"))
@@ -370,7 +401,7 @@ func TestPipeline(t *testing.T) {
 
 	// The issues and pages stages ran after projects, and refreshed their parts of the index.
 	read("index.json", &index)
-	check("totals", []int{index.Totals.Issues, index.Totals.IssueAncestors, index.Totals.WikiPages, index.Totals.Commits}, []int{5, 2, 4, 8})
+	check("totals", []int{index.Totals.Issues, index.Totals.IssueAncestors, index.Totals.WikiPages, index.Totals.Commits}, []int{5, 2, 4, 10})
 	b, _ = json.Marshal(index.IssuesByProject[0])
 	check("issue project", string(b), `{"key":"ENG","name":"Engineering","file":"issues/ENG.jsonl","records":5,`+
 		`"by_role":{"assignee":3,"reporter":1,"creator":1,"commenter":2,"editor":1,"worklogger":1,"referenced":3,"ancestor":1},`+
@@ -388,7 +419,7 @@ func TestPipeline(t *testing.T) {
 	if err := Run(context.Background(), opts, cfg, noTracker, []string{"prs", "commits", "projects", "issues"}); err != nil {
 		t.Fatal(err)
 	}
-	if rows, err = readJSONL[Commit](filepath.Join(raw, "repos", "repo", "commits.jsonl")); err != nil || len(rows) != 8 {
+	if rows, err = readJSONL[Commit](filepath.Join(raw, "repos", "repo", "commits.jsonl")); err != nil || len(rows) != 10 {
 		t.Fatalf("commits without an issue tracker: %d, %v", len(rows), err)
 	}
 	for _, r := range rows {
@@ -398,6 +429,10 @@ func TestPipeline(t *testing.T) {
 		t.Fatal(err)
 	}
 	check("PR issue keys without an issue tracker", prs[0].IssueKeys, []string{})
+	if decisions, err = readJSONL[Decision](filepath.Join(raw, "repos", "repo", "decisions.jsonl")); err != nil || len(decisions) != 1 {
+		t.Fatalf("decisions without an issue tracker: %d, %v", len(decisions), err)
+	}
+	check("decision issue keys without an issue tracker", decisions[0].IssueKeys, []string{})
 	read("index.json", &index)
 	check("sources without an issue tracker", index.Sources.IssueTracker, (*string)(nil))
 	if fileExists(filepath.Join(raw, "org", "issue_projects.json")) {

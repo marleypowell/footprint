@@ -30,6 +30,7 @@ type Facts struct {
 	issues      map[string]*Issue  // by current key
 	items       map[string]*Item   // by id
 	changes     map[string]*Change // by id
+	changeOf    map[string]string  // repo@sha of a commit of the user's -> the change it is part of
 	docs        map[string]*Doc    // by page id
 	events      []event
 	notes       map[string]*noteFile // by file name (the item id, path-encoded), read from the notes directory
@@ -59,7 +60,7 @@ type Inputs struct {
 func Build(raw *Raw, in Inputs) (*Facts, error) {
 	f := &Facts{
 		raw: raw, people: newPeople(raw.Index.Identity), keyOf: map[string]string{}, issues: map[string]*Issue{},
-		items: map[string]*Item{}, changes: map[string]*Change{}, docs: map[string]*Doc{},
+		items: map[string]*Item{}, changes: map[string]*Change{}, changeOf: map[string]string{}, docs: map[string]*Doc{},
 	}
 	var err error
 	if f.context, f.contexts, err = readContext(in.ContextDir); err != nil {
@@ -103,6 +104,7 @@ const (
 	evIssueWorked     = "issue_worked" // the user acted on an issue: a status change, comment, worklog, or a change naming it
 	evPageCreated     = "page_created"
 	evPageVersion     = "page_version" // the user saved a version of a page
+	evADRVersion      = "adr_version"  // a commit of the user's changed a decision record
 )
 
 func (f *Facts) emit(e event) {

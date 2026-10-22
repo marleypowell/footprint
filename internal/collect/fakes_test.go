@@ -54,6 +54,10 @@ func (f *fakeHost) CommitURL(repo codehost.Repo, sha string) string {
 	return repo.URL + "/-/commit/" + sha
 }
 
+func (f *fakeHost) FileURL(repo codehost.Repo, branch, path string) string {
+	return repo.URL + "/-/blob/" + branch + "/" + path
+}
+
 var mergeRequestRE = regexp.MustCompile(`See merge request [\w./-]+!(\d+)`)
 
 func (f *fakeHost) PullRequestNumbers(message string) []int {

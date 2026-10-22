@@ -31,7 +31,7 @@ facts.json         every number overview.md shows, by name (Summary below)
 items.jsonl        the work items, by first activity
 changes.jsonl      the code changes, deduplicated, by when they count
 issues.jsonl       every issue of the dataset, with the user's involvement and its item
-docs.jsonl         every wiki page of the dataset, with the user's share
+docs.jsonl         every wiki page and decision record (ADR) of the dataset, with the user's share
 repos.jsonl        the repos, with systems, totals and the kinds of file the user changed
 packs/<id>.md      each work item's evidence, bounded, for writing its note
 catalogue.md       every item, oldest first, as standalone text with its note: the record to keep
@@ -63,6 +63,7 @@ The raw data's caveats, and what facts does with each:
 | referenced-only issues | Count through the changes naming them, and their item. |
 | ancestors | Context: they make initiatives and give features their epics, and the user's comments on them count as active days, but they are not the user's issues. |
 | wiki authorship | `share` is the user's versions over all versions. A page is a substantial doc when it has 300 words or more, the user's share is half or more, and they created it or saved 3 versions or more. |
+| ADR authorship | A decision record's versions are the commits that changed it on the default branch. A version is the user's when they authored the commit, or an AI agent did in their PR or crediting them; a colleague's commit naming them as co-author is not. `share` and the rule are a page's, from 200 words: a decision record is short by design. Its versions count toward the doc's item; the same commits count toward their changes' items as usual. |
 | time | Every timestamp is parsed (commit dates carry their author's offset) and counted by its UTC day. Windows are whole UTC days, both ends included. |
 
 ## Work items
@@ -74,7 +75,7 @@ A work item is the unit a note is written about:
 | `feature` | the issue key, `PAY-62` | an issue that is not a sub-task (a story, task or bug), with its sub-tasks and the changes naming them. A sub-task whose parent is unknown stands for itself |
 | `initiative` | the issue key | an epic or above (`level` 1+), with the features under it; its totals include theirs |
 | `bucket` | `repo+<repo>+<year>q<quarter>` | a repo's changes that name no issue, by the quarter they began |
-| `doc` | `doc+<page id>` | a substantial doc the user wrote |
+| `doc` | `doc+<page id>`; `adr+<repo>+<file name>` for an ADR | a substantial doc the user wrote: a wiki page, or a decision record (`type` `adr`). An ADR's file name drops its extension; two in a repo with the same name are named by their paths |
 
 An issue makes a work item when its **involvement** is one of the first four:
 
@@ -93,7 +94,7 @@ sub-tasks or changes only.
 
 **Effort** sizes an item by its **active days**: distinct UTC days with the user's own activity on it
 (commits authored, PRs opened, status changes, comments, worklogs, writing the issue up; for a doc,
-the versions they saved). XL is 31 days or more, L 11-30, M 4-10, S 2-3, XS 1 or none. A note is
+the versions they saved, or an ADR's commits). XL is 31 days or more, L 11-30, M 4-10, S 2-3, XS 1 or none. A note is
 **required** for every item of effort M or more, and for every doc.
 
 ## facts.json
@@ -127,7 +128,8 @@ Totals, each counting events in the window:
 | `issues_worked` | distinct issues the user acted on (a status change, comment, worklog, or a change naming it) or finished |
 | `issues_raised` | reported or created by the user |
 | `pages_created`, `pages_edited` | wiki content the user created; distinct pages they saved a version of |
-| `docs_written` | distinct substantial docs the user saved a version of |
+| `docs_written` | distinct substantial docs (wiki pages and ADRs) the user saved a version of |
+| `adrs_written` | those of them that are decision records |
 | `items` | distinct work items with anything counted toward them |
 
 **Team signals** are hints for `profile.md`, not facts: the data records where issues were, not
@@ -152,7 +154,7 @@ which team the user was on. For each quarter, from the issues the user worked on
 | `first`, `last`, `active_days`, `effort` | its span (anything counted toward it), the user's active days, its size |
 | `totals` | Totals counted toward it (an initiative's include its features') |
 | `subtasks` | a feature's `{total, done_by_me}` |
-| `issues`, `features`, `changes`, `also_changes`, `docs` | what it holds: its own issue first; changes counted toward it; changes naming it that count toward another item; docs naming it |
+| `issues`, `features`, `changes`, `also_changes`, `docs` | what it holds: its own issue first; changes counted toward it; changes naming it that count toward another item (an ADR's: the changes that wrote it); docs naming it, and ADRs written in its changes |
 | `pack`, `note` | its pack's input hash, and its note's state |
 
 In a window's items.jsonl, `totals`, `first`, `last` and `active_days` are the window's; `effort` and
@@ -170,10 +172,12 @@ In a window's items.jsonl, `totals`, `first`, `last` and `active_days` are the w
 - **issues**: `key`, `previous_keys`, `title`, `url`, `project`, `type`, `level`, `status`,
   `status_category`, `roles` (as collected), `involvement`, `done_by_me`, `created_at`,
   `resolved_at`, `parent`, `item`, `initiative`, `changes` (the user's changes naming it).
-- **docs**: `ref` (`doc+<id>`, as drafts cite it), `id`, `item` (when substantial), `title`, `url`,
-  `type`, `live`, `status`, `space`, `ancestors`, `labels`, `created_at`, `created_by_me`, `versions`,
-  `my_versions`, `share` (percent), `words`, `substantial`, `keys`, `items`, `first`, `last` (the
-  user's versions).
+- **docs**: `ref` (`doc+<id>` or `adr+<repo>+<name>`, as drafts cite it), `id` (the wiki's; an ADR's
+  `<repo>/<path>`), `item` (when substantial), `title`, `url`, `type` (the wiki's, or `adr`), `live`,
+  `status`, `space`, `repo` and `path` (an ADR's), `ancestors`, `labels`, `created_at`,
+  `created_by_me`, `versions` (an ADR's commits), `my_versions`, `share` (percent), `words`,
+  `substantial`, `keys`, `items` (the items of the issues it names, and of an ADR's changes),
+  `changes` (an ADR's: the user's changes that wrote it), `first`, `last` (the user's versions).
 - **repos**: `name`, `url`, `description`, `archived`, `systems`, `domains` (from the catalog),
   `first`, `last`, `started_by_me` (the user made its first commit), `totals`, `extensions` (`{ext,
   files, added}` of the files the user's landed changes touched, most lines first), `items` (most of
@@ -184,7 +188,8 @@ In a window's items.jsonl, `totals`, `first`, `last` and `active_days` are the w
 `packs/<id>.md` holds an item's evidence and nothing that changes without the user's work changing:
 its issue's description, the issues in it, the user's own comments, its changes (the largest, when
 there are many), the larger changes' descriptions, the user's commit messages, where the changes
-were, the docs naming it, a doc's text, and the user's corrections from `context/items/<id>.md`.
+were, the docs naming it or written in its changes, a doc's text (an ADR's with the changes that
+wrote it), and the user's corrections from `context/items/<id>.md`.
 Every cut is marked `… [+N]`; a pack stays under 16 KiB. Its **input hash** (`pack` in items.jsonl)
 is the SHA-256 of those inputs and `pack_version`, so a change to how packs are drawn does not make
 notes stale.
@@ -216,13 +221,14 @@ first..last, title` for every required item not current and every invalid note, 
 
 A note or draft cites records as `[[id]]` or `[[id|label]]`, where id is a work item, an issue key
 (any the dataset has, old keys included), a change (`repo#123`, `repo@` and 7 or more characters of a
-sha), or a doc (`doc+<id>`). A draft's frontmatter names its window: `window: all` or
+sha), or a doc (`doc+<id>`, `adr+<repo>+<name>`). A draft's frontmatter names its window: `window: all` or
 `window: YYYY-MM-DD..YYYY-MM-DD`.
 
 `footprint check <file>...`:
 
 - **Errors** (it exits 1): no frontmatter; a citation naming nothing; in a note, a citation outside
-  its item's evidence, a missing section, or missing inputs.
+  its item's evidence (the records it lists, and for a doc the items it names or was written in), a
+  missing section, or missing inputs.
 - **Warnings**: in a note, any count; in a draft, any number (outside dates, keys, citations, links,
   code, and names and versions such as Angular 15, .NET 8 or Office 365) that matches no fact in
   scope, within 10% when written as an approximation ("about 300", "1.2k", a round number). In scope

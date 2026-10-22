@@ -39,8 +39,8 @@ Stages, in the order "all" runs them:
   commits     the user's commits on any ref (author, committer, co-author, or in one of
               the user's PRs), full message + per-file stats   -> <data>/repos/<repo>/commits.jsonl
   catalog     every catalog entity on every default branch     -> <data>/catalog/
-  projects    per-repo "what is this" bundle + the index       -> <data>/repos/<repo>/project.json,
-                                                                  <data>/index.json
+  projects    per-repo "what is this" bundle, the decision     -> <data>/repos/<repo>/project.json,
+              records (ADRs) the user committed to, the index     decisions.jsonl, <data>/index.json
   verify      cross-check against the host's attribution       -> <data>/org/verification.json
   issues      issues ever assigned to the user, or named in their commits and PRs, with
               comments, change history and worklogs, and the issues

@@ -120,6 +120,7 @@ type IndexTotals struct {
 	Issues                  int     `json:"issues"`          // involving the user
 	IssueAncestors          int     `json:"issue_ancestors"` // loaded only as the parents of those, up to the top
 	WikiPages               int     `json:"wiki_pages"`
+	Decisions               int     `json:"decisions"` // decision records with a commit of the user's
 }
 
 // IndexGroup is one file of issues (an issue project) or of wiki content (a space).
@@ -155,8 +156,8 @@ type IndexEntity struct {
 	Type        *string `json:"type"`
 }
 
-// projects writes each active repo's project.json and docs, then index.json, the issue tracker's
-// projects and the schema doc.
+// projects writes each active repo's project.json, docs and decision records, then index.json, the
+// issue tracker's projects and the schema doc.
 func (h *harness) projects(ctx context.Context) error {
 	repos, err := h.loadRepos()
 	if err != nil {
@@ -167,6 +168,10 @@ func (h *harness) projects(ctx context.Context) error {
 		if trackerProjects, err = h.tools.Tracker.Projects(ctx); err != nil {
 			return trackerProjectsError(err)
 		}
+	}
+	issueKeys, err := h.issueKeys(ctx)
+	if err != nil {
+		return err
 	}
 	byName := map[string]Repo{}
 	for _, r := range repos {
@@ -198,6 +203,7 @@ func (h *harness) projects(ctx context.Context) error {
 		return err
 	}
 	var index []IndexRepo
+	decisionCount := 0
 	for _, entry := range dirEntries {
 		name, dir := entry.Name(), filepath.Join(h.raw, "repos", entry.Name())
 		hasCommits, hasPRs := fileExists(filepath.Join(dir, "commits.jsonl")), fileExists(filepath.Join(dir, "prs.jsonl"))
@@ -221,8 +227,17 @@ func (h *harness) projects(ctx context.Context) error {
 				catalogDirs[parentDir(e.Path)] = true
 			}
 		}
+		commits, err := readJSONL[Commit](filepath.Join(dir, "commits.jsonl"))
+		if err != nil {
+			return err
+		}
+		prs, err := readJSONL[PullRequestRecord](filepath.Join(dir, "prs.jsonl"))
+		if err != nil {
+			return err
+		}
 		project := Project{Name: name, URL: repo.URL, CodeHost: repo, Docs: []Doc{}, TreeTop: []string{},
 			Catalog: ProjectCatalog{Entities: []catalog.Entity{}, Context: relatedEntities(own, byRef)}}
+		decisionsFile := filepath.Join(dir, "decisions.jsonl")
 		if h.isMirrored(name) {
 			if project.Docs, project.TreeTop, err = h.projectDocs(ctx, repo, catalogDirs); err != nil {
 				return err
@@ -230,12 +245,20 @@ func (h *harness) projects(ctx context.Context) error {
 			if project.History, err = h.historyInfo(ctx, repo, statuses[name]); err != nil {
 				return err
 			}
+			decisions, err := h.decisions(ctx, repo, commits, issueKeys)
+			if err != nil {
+				return err
+			}
+			if len(decisions) > 0 {
+				err = writeJSONL(decisionsFile, decisions)
+			} else if err = os.Remove(decisionsFile); errors.Is(err, fs.ErrNotExist) {
+				err = nil
+			}
+			if err != nil {
+				return err
+			}
 		}
-		commits, err := readJSONL[Commit](filepath.Join(dir, "commits.jsonl"))
-		if err != nil {
-			return err
-		}
-		prs, err := readJSONL[PullRequestRecord](filepath.Join(dir, "prs.jsonl"))
+		decisions, err := readJSONL[Decision](decisionsFile)
 		if err != nil {
 			return err
 		}
@@ -258,6 +281,9 @@ func (h *harness) projects(ctx context.Context) error {
 		if hasPRs {
 			item.Files["prs"] = "repos/" + name + "/prs.jsonl"
 		}
+		if len(decisions) > 0 {
+			item.Files["decisions"] = "repos/" + name + "/decisions.jsonl"
+		}
 		for _, d := range project.Docs {
 			item.Docs = append(item.Docs, d.SavedAs)
 		}
@@ -268,13 +294,14 @@ func (h *harness) projects(ctx context.Context) error {
 			return err
 		}
 		index = append(index, item)
-		logf("projects: %s: %d entities, %d docs, %d commits, %d prs", name, len(own), len(project.Docs),
-			project.Activity.CommitsTotal, project.Activity.PRsAuthored)
+		decisionCount += len(decisions)
+		logf("projects: %s: %d entities, %d docs, %d decision records, %d commits, %d prs", name, len(own), len(project.Docs),
+			len(decisions), project.Activity.CommitsTotal, project.Activity.PRsAuthored)
 	}
 	sort.SliceStable(index, func(i, j int) bool {
 		return index[i].Authored+index[i].PRsAuthored > index[j].Authored+index[j].PRsAuthored
 	})
-	totals := IndexTotals{Repos: len(index)}
+	totals := IndexTotals{Repos: len(index), Decisions: decisionCount}
 	for _, r := range index {
 		totals.Commits += r.CommitsTotal
 		totals.AuthoredCommits += r.Authored

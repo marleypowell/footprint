@@ -36,6 +36,9 @@ others.
 ```
 
 - Cite the records in this pack: the item, its issues, its changes, its docs.
+- For an ADR, say what was decided and why, and the user's part in it: they wrote most of the
+  record, but the decision is the deciders' (often listed in its front matter) unless the text says
+  otherwise.
 - Describe size in words ("a long-running effort", "a handful of fixes"); numbers come from the facts
   when drafting. Write versions and product names as they are (Angular 15, .NET 8, Office 365):
   check tells them from counts.

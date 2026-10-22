@@ -94,11 +94,14 @@ type packPath struct {
 
 type packDoc struct {
 	Space     string   `json:"space"`
+	Repo      string   `json:"repo,omitempty"` // an ADR's, with its path and the changes that wrote it
+	Path      string   `json:"path,omitempty"`
 	Ancestors []string `json:"ancestors"`
 	Labels    []string `json:"labels"`
 	Created   string   `json:"created"`
 	Mine      string   `json:"mine"` // "created by you; 7 of 9 versions yours"
 	Live      bool     `json:"live"`
+	Changes   []Ref    `json:"changes,omitempty"`
 	Body      string   `json:"body"`
 }
 
@@ -267,12 +270,19 @@ func (f *Facts) packInput(it *Item) *packInput {
 		}
 	}
 	if d := it.doc; d != nil {
-		mine := fmt.Sprintf("%d of %d versions yours", d.MyVersions, d.Versions)
+		unit := "versions"
+		if d.adr != nil {
+			unit = "commits"
+		}
+		mine := fmt.Sprintf("%d of %d %s yours", d.MyVersions, d.Versions, unit)
 		if d.CreatedByMe {
 			mine = "created by you; " + mine
 		}
-		in.Doc = &packDoc{Space: d.Space, Ancestors: d.Ancestors, Labels: d.Labels, Created: dayOf(d.CreatedAt), Mine: mine,
-			Live: d.Live, Body: clip(deref(d.rec.Body), maxDocBody)}
+		in.Doc = &packDoc{Space: d.Space, Repo: d.Repo, Path: d.Path, Ancestors: d.Ancestors, Labels: d.Labels,
+			Created: dayOf(d.CreatedAt), Mine: mine, Live: d.Live, Body: clip(d.body(), maxDocBody)}
+		for _, id := range d.Changes {
+			in.Doc.Changes = append(in.Doc.Changes, Ref{ID: id, Title: oneLine(f.changes[id].Title)})
+		}
 	}
 	return in
 }
@@ -334,7 +344,13 @@ func renderPack(in *packInput, hash string) []byte {
 	if in.Description != "" {
 		w("\n## Description\n\n%s\n", in.Description)
 	}
-	if d := in.Doc; d != nil {
+	if d := in.Doc; d != nil && d.Repo != "" {
+		w("\n## The decision record\n\n- %s: %s\n- created %s; %s\n", d.Repo, d.Path, d.Created, d.Mine)
+		for _, c := range d.Changes {
+			w("- written in %s · %s\n", c.ID, c.Title)
+		}
+		w("\n%s\n", d.Body)
+	} else if d != nil {
 		w("\n## The page\n\n- space: %s", d.Space)
 		if len(d.Ancestors) > 0 {
 			w(" › %s", strings.Join(d.Ancestors, " › "))
@@ -414,7 +430,7 @@ func renderPack(in *packInput, hash string) []byte {
 		}
 	}
 	if len(in.Docs) > 0 {
-		w("\n## Wiki pages naming it\n\n")
+		w("\n## Docs naming it or written in its changes\n\n")
 		for _, d := range in.Docs {
 			w("- %s · %s\n", d.ID, d.Title)
 		}

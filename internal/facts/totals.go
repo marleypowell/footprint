@@ -25,7 +25,8 @@ type Totals struct {
 	IssuesRaised      int `json:"issues_raised"` // reported or created by the user
 	PagesCreated      int `json:"pages_created"`
 	PagesEdited       int `json:"pages_edited"` // distinct pages with a version by the user
-	DocsWritten       int `json:"docs_written"` // distinct substantial docs with a version by the user
+	DocsWritten       int `json:"docs_written"` // distinct substantial docs (pages and ADRs) with a version by the user
+	ADRsWritten       int `json:"adrs_written"` // those that are decision records
 	Items             int `json:"items"`        // distinct work items with something counted toward them
 }
 
@@ -82,10 +83,16 @@ func totalsOf(events []event, w Window) Totals {
 			if e.item != "" {
 				add("docs", e.key)
 			}
+		case evADRVersion:
+			if e.item != "" {
+				add("docs", e.key)
+				add("adrs", e.key)
+			}
 		}
 	}
 	t.ActiveDays, t.Items, t.Repos = len(distinct["days"]), len(distinct["items"]), len(distinct["repos"])
 	t.IssuesWorked, t.PagesEdited, t.DocsWritten = len(distinct["worked"]), len(distinct["pages"]), len(distinct["docs"])
+	t.ADRsWritten = len(distinct["adrs"])
 	return t
 }
 

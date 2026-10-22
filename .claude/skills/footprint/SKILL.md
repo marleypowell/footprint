@@ -1,6 +1,6 @@
 ---
 name: footprint
-description: Answers the user's questions about their own past work, fills in their profile (titles, teams), and writes their CV, LinkedIn profile, performance review, promotion case, pay rise case, offboarding snapshot or job interview preparation, from the footprint dataset of their commits, PRs, issues and wiki pages.
+description: Answers the user's questions about their own past work, fills in their profile (titles, teams), and writes their CV, LinkedIn profile, performance review, promotion case, pay rise case, offboarding snapshot or job interview preparation, from the footprint dataset of their commits, PRs, issues, ADRs and wiki pages.
 ---
 
 # Using the footprint data

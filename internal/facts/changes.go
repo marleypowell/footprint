@@ -203,8 +203,14 @@ func (f *Facts) repoChanges(project collect.Project, commits []*collect.Commit, 
 				}
 				prGroups[pr] = append(prGroups[pr], rep)
 			}
+			for _, c := range members {
+				f.changeOf[repo+"@"+c.SHA] = repo + "#" + itoa(pr)
+			}
 		default:
 			standalone = append(standalone, rep)
+			for _, c := range members {
+				f.changeOf[repo+"@"+c.SHA] = repo + "@" + shortSHA(rep.SHA)
+			}
 		}
 	}
 
@@ -218,8 +224,12 @@ func (f *Facts) repoChanges(project collect.Project, commits []*collect.Commit, 
 	for _, c := range commits {
 		inMyPRs := len(c.InUserPRs) > 0 || len(c.MergeCommitForUserPRs) > 0 // part of a PR change
 		switch {
-		case isMerge(c) || hasRole(c, "author") || inMyPRs:
+		case isMerge(c) || hasRole(c, "author"):
+		case inMyPRs: // someone else's commit in the user's PR
+			pr := slices.Min(append(slices.Clone(c.InUserPRs), c.MergeCommitForUserPRs...))
+			f.changeOf[repo+"@"+c.SHA] = repo + "#" + itoa(pr)
 		case hasRole(c, "co-author"):
+			f.changeOf[repo+"@"+c.SHA] = repo + "@" + shortSHA(c.SHA)
 			f.addChange(f.coAuthoredChange(c))
 		case len(c.MigratedPRNumbersInMessage) > 0 && len(c.Parents) == 1 && c.OnDefaultBranch && hasRole(c, "committer"):
 			// completing someone else's PR on the earlier host

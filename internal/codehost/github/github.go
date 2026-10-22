@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
 	"regexp"
 	"sort"
 	"strconv"
@@ -62,6 +63,19 @@ func (h *Host) Remote(repo codehost.Repo) codehost.Remote {
 }
 
 func (h *Host) CommitURL(repo codehost.Repo, sha string) string { return repo.URL + "/commit/" + sha }
+
+func (h *Host) FileURL(repo codehost.Repo, branch, path string) string {
+	return repo.URL + "/blob/" + escapePath(branch) + "/" + escapePath(path)
+}
+
+// escapePath escapes each segment of a slash-separated path for a URL.
+func escapePath(p string) string {
+	parts := strings.Split(p, "/")
+	for i, s := range parts {
+		parts[i] = url.PathEscape(s)
+	}
+	return strings.Join(parts, "/")
+}
 
 var pullRequestInMessage = []*regexp.Regexp{
 	regexp.MustCompile(`(?m)\(#(\d+)\)\s*$`),               // squash merge: "Title (#123)"

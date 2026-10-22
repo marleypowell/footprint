@@ -18,6 +18,7 @@ type Raw struct {
 	Projects      []collect.Project // one per repo in the index, in its order
 	Commits       []collect.Commit  // every repo's, in index order then file order
 	PRs           []collect.PullRequestRecord
+	Decisions     []collect.Decision    // decision records in the repos, by repo in index order
 	Issues        []collect.IssueRecord // ancestors included
 	Unresolved    []collect.UnresolvedKey
 	Pages         []collect.PageRecord
@@ -50,7 +51,11 @@ func Load(dir string) (*Raw, error) {
 		if err != nil {
 			return nil, err
 		}
-		raw.Commits, raw.PRs = append(raw.Commits, commits...), append(raw.PRs, prs...)
+		decisions, err := readJSONL[collect.Decision](dir, repo.Files["decisions"])
+		if err != nil {
+			return nil, err
+		}
+		raw.Commits, raw.PRs, raw.Decisions = append(raw.Commits, commits...), append(raw.PRs, prs...), append(raw.Decisions, decisions...)
 	}
 	for _, g := range raw.Index.IssuesByProject {
 		issues, err := readJSONL[collect.IssueRecord](dir, g.File)

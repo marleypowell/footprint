@@ -27,6 +27,7 @@ var metrics = []struct{ name, label string }{
 	{"pages_created", "Wiki pages created"},
 	{"pages_edited", "Wiki pages edited"},
 	{"docs_written", "Substantial docs written"},
+	{"adrs_written", "Decision records (ADRs) among them"},
 	{"items", "Work items"},
 	{"active_days", "Active days"},
 }
@@ -201,9 +202,14 @@ func (f *Facts) overview(w Window) []byte {
 		}
 	}
 	if len(docs) > 0 {
-		p("\n## Docs\n\nSubstantial wiki pages you wrote (%d+ words, mostly yours).\n\n", substantialWords)
+		p("\n## Docs\n\nSubstantial docs you wrote, mostly yours: wiki pages of %d+ words, and decision records (ADRs) of %d+.\n\n",
+			substantialWords, decisionWords)
 		for _, d := range docs {
-			p("- %s · %s · %s, created %s, %d%% of versions yours\n", d.Ref, d.Title, d.Space, dayOf(d.CreatedAt), d.Share)
+			if d.Repo != "" {
+				p("- %s · %s · ADR in %s, created %s, %d%% of commits yours\n", d.Ref, d.Title, d.Repo, dayOf(d.CreatedAt), d.Share)
+			} else {
+				p("- %s · %s · %s, created %s, %d%% of versions yours\n", d.Ref, d.Title, d.Space, dayOf(d.CreatedAt), d.Share)
+			}
 		}
 	}
 
@@ -229,7 +235,7 @@ func (f *Facts) repoEvents(repo string) []event {
 // docIn says whether the user saved a version of d in w.
 func (f *Facts) docIn(d *Doc, w Window) bool {
 	for _, e := range d.evs {
-		if e.kind == evPageVersion && w.Contains(e.at) {
+		if (e.kind == evPageVersion || e.kind == evADRVersion) && w.Contains(e.at) {
 			return true
 		}
 	}

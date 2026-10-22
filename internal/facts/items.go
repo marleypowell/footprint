@@ -15,7 +15,7 @@ const (
 	KindFeature    = "feature"    // a story, task or bug (an issue that is not a sub-task), with its sub-tasks
 	KindInitiative = "initiative" // an epic or above, with the features under it
 	KindBucket     = "bucket"     // a repo's changes that name no issue, per quarter
-	KindDoc        = "doc"        // a substantial wiki page the user wrote
+	KindDoc        = "doc"        // a substantial wiki page or decision record (ADR) the user wrote
 )
 
 // effortTiers size an item by the distinct days of the user's activity on it.
@@ -48,7 +48,7 @@ type Item struct {
 	Kind        string    `json:"kind"`
 	Title       string    `json:"title"`
 	URL         string    `json:"url"`
-	Type        string    `json:"type"`        // the issue's type, or the wiki's for a doc
+	Type        string    `json:"type"`        // the issue's type; a doc's wiki type, or "adr"
 	Status      string    `json:"status"`      // the issue's status category
 	Involvement string    `json:"involvement"` // in the item's own issue; "contributed" when only through its sub-tasks or changes
 	Initiative  *Ref      `json:"initiative"`  // a feature's epic; an initiative's own parent
@@ -62,8 +62,8 @@ type Item struct {
 	Issues      []string  `json:"issues"`       // its own issue first, then the others in it
 	Features    []string  `json:"features"`     // an initiative's
 	Changes     []string  `json:"changes"`      // the changes counted toward it
-	AlsoChanges []string  `json:"also_changes"` // changes naming it that count toward another item
-	Docs        []string  `json:"docs"`         // wiki pages naming it
+	AlsoChanges []string  `json:"also_changes"` // changes naming it that count toward another item; an ADR's, the changes that wrote it
+	Docs        []string  `json:"docs"`         // docs naming it, and ADRs written in its changes
 	Pack        string    `json:"pack"`         // the input hash of packs/<id>.md
 	Note        string    `json:"note"`         // current, stale, missing, invalid, or optional (not required, none yet)
 
@@ -98,8 +98,11 @@ func itemPath(id string) string {
 }
 
 func bucketID(repo string, at time.Time) string {
-	return "repo+" + strings.ReplaceAll(itemPath(repo), "+", "%2B") + "+" + quarter(at)
+	return "repo+" + refPart(repo) + "+" + quarter(at)
 }
+
+// refPart encodes one part of an id whose parts '+' separates.
+func refPart(s string) string { return strings.ReplaceAll(itemPath(s), "+", "%2B") }
 
 func (f *Facts) item(id, kind string) *Item {
 	if id == "" {
@@ -226,6 +229,9 @@ func (f *Facts) buildItems() {
 		}
 	}
 	for _, d := range f.Docs {
+		if it := f.items[d.Item]; it != nil {
+			it.AlsoChanges = append(it.AlsoChanges, d.Changes...)
+		}
 		for _, id := range d.Items {
 			if it := f.items[id]; it != nil {
 				it.Docs = append(it.Docs, d.Ref)
