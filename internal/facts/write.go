@@ -17,14 +17,15 @@ import (
 
 // Summary is facts.json: the numbers for one window, by name, and what they leave out.
 type Summary struct {
-	PackVersion int        `json:"pack_version"`
-	Window      string     `json:"window"` // "all" or "YYYY-MM-DD..YYYY-MM-DD"
-	Coverage    Coverage   `json:"coverage"`
-	Totals      Totals     `json:"totals"`
-	ByYear      []Period   `json:"by_year"`
-	ByQuarter   []Period   `json:"by_quarter"`
-	Excluded    Excluded   `json:"excluded"`
-	Notes       NoteCounts `json:"notes"`
+	PackVersion int           `json:"pack_version"`
+	Window      string        `json:"window"` // "all" or "YYYY-MM-DD..YYYY-MM-DD"
+	Coverage    Coverage      `json:"coverage"`
+	Totals      Totals        `json:"totals"`
+	ByYear      []Period      `json:"by_year"`
+	ByQuarter   []Period      `json:"by_quarter"`
+	TeamSignals []TeamSignals `json:"team_signals"`
+	Excluded    Excluded      `json:"excluded"`
+	Notes       NoteCounts    `json:"notes"`
 }
 
 // Coverage says what the dataset can and cannot show.
@@ -60,6 +61,7 @@ var notCollected = []string{
 func (f *Facts) Summary(w Window) Summary {
 	s := Summary{PackVersion: PackVersion, Window: w.String(), Totals: totalsOf(f.events, w), Excluded: f.Excluded}
 	s.ByYear, s.ByQuarter = periods(f.events, w)
+	s.TeamSignals = f.teamSignals(w)
 	s.Coverage = Coverage{Sources: f.raw.Index.Sources, NotCollected: notCollected}
 	s.Coverage.First, s.Coverage.Last = span(f.events, w)
 	for _, pr := range f.raw.PRs {

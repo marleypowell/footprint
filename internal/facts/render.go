@@ -99,6 +99,25 @@ func (f *Facts) overview(w Window) []byte {
 			p("\n")
 		}
 	}
+	if len(s.TeamSignals) > 0 {
+		p("\n## Team signals\n\nBy quarter, where the issues you worked on or finished were then: the boards whose sprints held\n")
+		p("them, their projects, and their team field; with the issues in each. Hints for profile.md, not facts.\n\n")
+		p("| quarter | boards | projects | teams |\n|---|---|---|---|\n")
+		list := func(ss []Signal) string {
+			var parts []string
+			for _, s := range ss {
+				name := s.Name
+				if s.Title != "" {
+					name += " " + s.Title
+				}
+				parts = append(parts, fmt.Sprintf("%s (%d)", name, s.Issues))
+			}
+			return cell(strings.Join(parts, ", "))
+		}
+		for _, ts := range s.TeamSignals {
+			p("| %s | %s | %s | %s |\n", ts.Period, list(ts.Boards), list(ts.Projects), list(ts.Teams))
+		}
+	}
 
 	var initiatives, others []*Item
 	for _, it := range items {

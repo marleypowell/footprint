@@ -25,7 +25,7 @@ counts: it is reused across windows, and counts belong to the window a document 
 
 ```
 README.md          this file
-overview.md        all time: coverage, totals, by year, initiatives, work items by effort, repos, docs, notes
+overview.md        all time: coverage, totals, by year, team signals, initiatives, work items by effort, repos, docs, notes
 facts.json         every number overview.md shows, by name (Summary below)
 items.jsonl        the work items, by first activity
 changes.jsonl      the code changes, deduplicated, by when they count
@@ -103,6 +103,7 @@ window        "all", or "YYYY-MM-DD..YYYY-MM-DD"
 coverage      sources; first and last day counted; prs_from (the first PR record); not_collected
 totals        the window's Totals
 by_year, by_quarter   [{period: "2024" | "2024q3", totals}]
+team_signals  [{period: "2024q3", boards, projects, teams}]: each [{name, title, issues}] (below)
 excluded      {generated, bulk}: {files, added, deleted} left out of line counts (all time)
 notes         {required, current, stale, missing, invalid, renamed, optional, orphans}
 ```
@@ -127,6 +128,17 @@ Totals, each counting events in the window:
 | `pages_created`, `pages_edited` | wiki content the user created; distinct pages they saved a version of |
 | `docs_written` | distinct substantial docs the user saved a version of |
 | `items` | distinct work items with anything counted toward them |
+
+**Team signals** are hints for `profile.md`, not facts: the data records where issues were, not
+which team the user was on. For each quarter, from the issues the user worked on or finished then
+(`issues_worked` events), counting distinct issues:
+
+- `boards`: the sprint that held the issue at the time (started, and not yet completed or past its
+  end day; the latest-starting when several), named without the words that number it: a sprint's
+  name up to its first year (`2024`, `CY24`), number, `Sprint`, `Cycle`, `Iteration`, quarter or
+  dash, so `Checkout CY22 Sprint 3` is `Checkout`.
+- `projects`: the issue's project key, with its name as `title`.
+- `teams`: the issue's own team field, where the tracker has one.
 
 ## items.jsonl
 

@@ -134,6 +134,10 @@ func fixture() *Raw {
 			r.Description = "Make search fast."
 			r.Subtasks = []tracker.IssueRef{{Key: "ENG-4"}, {Key: "ENG-6"}}
 			r.History = []tracker.Change{status("h1", "2024-01-06T00:00:00+00:00", uJane, "Done")}
+			r.Sprints = []tracker.Sprint{
+				{Name: "Search Squad 2023 Sprint 26", StartAt: ptr("2023-12-18T09:00:00Z"), EndAt: ptr("2023-12-29T17:00:00Z")},
+				{Name: "Search Squad CY24 Sprint 1", StartAt: ptr("2024-01-01T09:00:00Z"), EndAt: ptr("2024-01-12T17:00:00Z"), CompletedAt: ptr("2024-01-06T00:00:00Z")},
+			}
 		}),
 		// ENG-4: finished by someone else, but the user was its assignee when it was resolved
 		issue("ENG-4", tracker.SubtaskLevel, "Sub-task", "ENG-1", func(r *collect.IssueRecord) {
@@ -144,10 +148,11 @@ func fixture() *Raw {
 				{ID: "h4", Author: uOther, CreatedAt: "2024-01-08T00:00:00+00:00", Items: []tracker.ChangeItem{{Field: "assignee", FromID: ptr("u-jane"), ToID: ptr("u-other")}}},
 			}
 			r.Comments = []tracker.Comment{{ID: "k1", Author: uJane, CreatedAt: "2024-01-03T12:00:00+00:00", Body: "Indexed it.", ByUser: true}}
+			r.Sprints = []tracker.Sprint{{Name: "Search Squad 2024 - Sprint 1", StartAt: ptr("2024-01-01T09:00:00Z"), EndAt: ptr("2024-01-12T17:00:00Z")}}
 		}),
 		issue("ENG-2", tracker.StandardLevel, "Bug", "", func(r *collect.IssueRecord) {
 			r.Reporter, r.Creator, r.Roles = uJane, uJane, []string{"reporter", "creator", "referenced"}
-			r.CreatedAt = "2024-01-20T00:00:00+00:00"
+			r.CreatedAt, r.Team = "2024-01-20T00:00:00+00:00", ptr("Platform")
 		}),
 		issue("ENG-3", tracker.StandardLevel, "Task", "", func(r *collect.IssueRecord) {
 			r.Assignee, r.Roles, r.CreatedAt = uJane, []string{"assignee", "referenced"}, "2024-06-01T00:00:00+00:00"
@@ -260,6 +265,29 @@ func TestIssues(t *testing.T) {
 	check(t, "initiative totals include its features'", ini.Totals.PRsMerged, it.Totals.PRsMerged)
 	if _, ok := f.items["ENG-3"]; ok {
 		t.Error("an issue the user only had assigned made an item")
+	}
+}
+
+// Team signals: the board of the sprint that held each issue when the user worked on it, the
+// issues' projects, and their team field, by quarter.
+func TestTeamSignals(t *testing.T) {
+	f := build(t, fixture(), Inputs{})
+	check(t, "signals", f.teamSignals(All), []TeamSignals{{
+		Period:   "2024q1",
+		Boards:   []Signal{{Name: "Search Squad", Issues: 2}},
+		Projects: []Signal{{Name: "ENG", Title: "Engineering", Issues: 3}},
+		Teams:    []Signal{{Name: "Platform", Issues: 1}},
+	}})
+	w, _ := NewWindow("2024-04-01", "2024-06-30")
+	check(t, "a window with no issue work", f.teamSignals(w), []TeamSignals{})
+	for name, want := range map[string]string{
+		"Checkout 2020 Sprint 10": "Checkout", "Checkout CY22 Sprint 23": "Checkout", "Web Team CY23 TO 2": "Web Team",
+		"Checkout 2021 - Sprint 5": "Checkout", "Payments Sprint 1": "Payments", "Payments Archive": "Payments Archive",
+		"Sprint 12": "Sprint 12", "Cycle 3": "Cycle 3",
+	} {
+		if got := boardOf(name); got != want {
+			t.Errorf("boardOf(%q) = %q, want %q", name, got, want)
+		}
 	}
 }
 
