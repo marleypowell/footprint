@@ -230,7 +230,8 @@ sha), or a doc (`doc+<id>`, `adr+<repo>+<name>`). A draft's frontmatter names it
   its item's evidence (the records it lists, and for a doc the items it names or was written in), a
   missing section, or missing inputs.
 - **Warnings**: in a note, any count; in a draft, any number (outside dates, keys, citations, links,
-  code, and names and versions such as Angular 15, .NET 8 or Office 365) that matches no fact in
+  code, and names and versions such as Angular 15, .NET 8 or Office 365, though a whole number
+  followed by what it counts is a count: TypeScript 1,200 lines) that matches no fact in
   scope, within 10% when written as an approximation ("about 300", "1.2k", a round number). In scope
   are the window's totals, the totals of a year or quarter the paragraph names, the numbers of the
   records the paragraph cites, and every number in the user's context files. Percentages and

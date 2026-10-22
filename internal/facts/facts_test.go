@@ -457,7 +457,7 @@ func TestCheck(t *testing.T) {
 	var names strings.Builder
 	for _, s := range NoteSections {
 		names.WriteString("\n## " + s + "\n\nMoved Office 365 tenants to Angular 9 and .NET 10 [[ENG-1]], fixing HTTP 429 errors in version 2.\n" +
-			"Angular 9, C# 12, Node 18 and Windows 11.\n\n- Python 3\n")
+			"Angular 9, C# 12, Node 18 and Windows 11.\n\n- Python 3\n- Storybook (CSF 3.0 stories and docs pages)\n")
 	}
 	check(t, "versions and names are not counts", run(head+names.String()), []string(nil))
 	for _, f := range run(head + "\n## Summary\n\nI upgraded the monorepo to\nAngular 15 and the library too.\n" +
@@ -466,8 +466,9 @@ func TestCheck(t *testing.T) {
 			t.Errorf("a name that opens a line or sentence was flagged: %s", f)
 		}
 	}
-	counts := run(head + "\n## Summary\n\nMerged 12 PRs. Led 4 people, and I wrote 3 docs.\nI rebuilt Storybook 12 times.\n")
-	for _, n := range []string{`"12"`, `"4"`, `"3"`} {
+	counts := run(head + "\n## Summary\n\nMerged 12 PRs. Led 4 people, and I wrote 3 docs.\nI rebuilt Storybook 12 times.\n" +
+		"TypeScript 1,200 lines, Jira 9 issues, Confluence 5 pages and ADR 2 docs.\n")
+	for _, n := range []string{`"12"`, `"4"`, `"3"`, `"1,200"`, `"9"`, `"5"`, `"2"`} {
 		if !strings.Contains(strings.Join(counts, "\n"), n+": a note carries no counts") {
 			t.Errorf("no count warning for %s:\n%s", n, strings.Join(counts, "\n"))
 		}

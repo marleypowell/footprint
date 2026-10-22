@@ -298,7 +298,7 @@ func (c *checker) paragraph(lines []string, idx []int) {
 			if loc[10] >= 0 {
 				suffix = n.text[loc[10]:loc[11]]
 			}
-			if suffix == "" && loc[2] == loc[3] && partOfName(strings.TrimLeft(prev+" "+n.text[:start], " "), n.text[end:]) {
+			if suffix == "" && loc[2] == loc[3] && partOfName(strings.TrimLeft(prev+" "+n.text[:start], " "), raw, n.text[end:]) {
 				continue
 			}
 			got := strings.TrimSpace(n.text[start:end])
@@ -322,8 +322,9 @@ func (c *checker) paragraph(lines []string, idx []int) {
 var (
 	versionWords = map[string]bool{"version": true, "release": true, "level": true, "phase": true, "sprint": true, "tier": true}
 	listMarkerRE = regexp.MustCompile(`^([-*+>]|\d+[.)])$`)
-	// what a number counts, whatever precedes it: "rebuilt Storybook 12 times"
-	countUnitRE = regexp.MustCompile(`^(times|days|weeks|months|years|hours|minutes|people|engineers|developers|teammates|PRs|commits|tickets|repos)\b`)
+	// what a number counts, whatever precedes it: "rebuilt Storybook 12 times", "TypeScript 1,200 lines"
+	countUnitRE = regexp.MustCompile(`^(times|days|weeks|months|years|hours|minutes|people|engineers|developers|teammates|PRs|commits|tickets|repos|` +
+		`lines|changes|files|issues|stories|bugs|epics|pages|docs|ADRs|items|words)\b`)
 	// a sentence opening with a verb ("Merged 12 PRs", "Led 4 people", "Building 7 services"), as
 	// notes are written: past tense, or an irregular verb
 	verbRE = regexp.MustCompile(`(?i)^([a-z]+(ed|ing)|led|ran|wrote|built|made|sent|took|did|got|set|found|held|kept|taught|drove|spent|gave|brought|chose|cut|put|read|won)$`)
@@ -333,12 +334,13 @@ var (
 // reads as one sentence) and after it, belongs to a name or a version rather than counting
 // something: Angular 15, .NET 8, Office 365, HTTP 429, version 2. The word before it names something
 // when it has a capital letter. At the start of a sentence every word has one, so there it is a
-// name unless it is a verb.
-func partOfName(before, after string) bool {
+// name unless it is a verb. A unit after a whole number makes it a count (TypeScript 1,200 lines);
+// a decimal stays a version (CSF 3.0 stories).
+func partOfName(before, num, after string) bool {
 	if !strings.HasSuffix(before, " ") || strings.HasSuffix(before, "  ") {
 		return false
 	}
-	if countUnitRE.MatchString(strings.TrimLeft(after, " ")) {
+	if !strings.Contains(num, ".") && countUnitRE.MatchString(strings.TrimLeft(after, " ")) {
 		return false
 	}
 	before = strings.TrimSuffix(before, " ")
