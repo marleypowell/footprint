@@ -1,6 +1,6 @@
 ---
 name: footprint
-description: Answers the user's questions about their own past work, fills in their profile (titles, teams), and writes their CV, LinkedIn profile, performance review, promotion case, pay rise case or offboarding snapshot, from the footprint dataset of their commits, PRs, issues and wiki pages.
+description: Answers the user's questions about their own past work, fills in their profile (titles, teams), and writes their CV, LinkedIn profile, performance review, promotion case, pay rise case, offboarding snapshot or job interview preparation, from the footprint dataset of their commits, PRs, issues and wiki pages.
 ---
 
 # Using the footprint data
@@ -28,6 +28,7 @@ Work from the repo root. Build first when `bin/footprint` is missing or older th
 | a pay rise case | since their last pay change (ask) | `templates/pay-rise.md` |
 | a CV or LinkedIn profile | all | `templates/cv.md` |
 | an offboarding snapshot | all | `templates/offboarding.md` |
+| preparation for a job interview stage | all | `templates/interview.md` |
 
 ## Steps
 
@@ -36,10 +37,11 @@ Work from the repo root. Build first when `bin/footprint` is missing or older th
    all time. Done when the command exits 0 and you have told the user the coverage gaps that bear on
    their request.
 2. **Context.** Read `data/context/profile.md`, for a review, promotion or pay rise case
-   `data/context/framework.md`, and for a pay rise case `data/context/pay.md`. When `profile.md` is
-   missing, or lacks the employer, titles or teams the template needs, fill it by
-   `profile-interview.md`. Ask the user for the rest of what the template needs and the files lack,
-   and save their answers verbatim in those files. Done when every input the template lists is there.
+   `data/context/framework.md`, for a pay rise case `data/context/pay.md`, and for an interview
+   `data/context/interview-<company>.md`. When `profile.md` is missing, or lacks the employer, titles
+   or teams the template needs, fill it by `profile-interview.md`. Ask the user for the rest of what
+   the template needs and the files lack, and save their answers verbatim in those files. Done when
+   every input the template lists is there.
 3. **Notes.** Work down the window's `todo.txt`. For each line, read `data/facts/packs/<id>.md` (and
    the existing note, when stale) and write `data/notes/<id>.md` by `notes.md`. With more than 15
    lines, give subagents batches of about 15 ids each, with `notes.md`. Then re-run step 1's command.
@@ -51,8 +53,8 @@ Work from the repo root. Build first when `bin/footprint` is missing or older th
 5. **Check.** Run `bin/footprint check <draft>`. Fix every error. For each warning, take the number
    from the facts, cite the record it belongs to, or keep it and list it for the user as unverified.
    Done when check exits 0 and every warning is fixed or listed.
-6. **Hand over.** Run `bin/footprint -plain check <draft>` for a CV, LinkedIn profile or offboarding
-   snapshot, `-links` for a review, promotion or pay rise case, to write `<draft>.final.md`. Give the
-   user its path, the unverified numbers, and the open questions of the notes it drew on. Save their
-   answers verbatim in `data/context/items/<id>.md`: the next facts run adds them to those items'
-   packs, and the notes go stale to take them in.
+6. **Hand over.** Run `bin/footprint -plain check <draft>` for a CV, LinkedIn profile, offboarding
+   snapshot or interview preparation, `-links` for a review, promotion or pay rise case, to write
+   `<draft>.final.md`. Give the user its path, the unverified numbers, and the open questions of the
+   notes it drew on. Save their answers verbatim in `data/context/items/<id>.md`: the next facts run
+   adds them to those items' packs, and the notes go stale to take them in.
