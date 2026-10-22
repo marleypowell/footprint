@@ -192,13 +192,13 @@ bin/footprint check data/drafts/review.md             # citations and numbers in
 - `check` fails a note or draft whose citations (`[[PAY-62]]`, `[[repo#123]]`) name nothing, and
   lists the numbers that match no fact. `-plain` or `-links` writes the version to share.
 - Your own words go in `data/context/`: `profile.md` (titles, dates, teams), `framework.md` (the
-  career framework to map evidence to), and `items/<id>.md` (impact or corrections for one item,
-  which join its pack).
+  career framework to map evidence to), `pay.md` (pay and market figures, for a pay rise case), and
+  `items/<id>.md` (impact or corrections for one item, which join its pack).
 
 In Claude Code, the `footprint` skill ([`.claude/skills/footprint/`](.claude/skills/footprint/SKILL.md))
 runs these steps to answer questions about your work, and to write a CV or LinkedIn profile, a
-performance review, a promotion case, or an offboarding snapshot. Its steps only use the CLI and
-files, so another agent can follow `SKILL.md` too.
+performance review, a promotion or pay rise case, or an offboarding snapshot. Its steps only use
+the CLI and files, so another agent can follow `SKILL.md` too.
 
 | directory | written by | |
 |---|---|---|
