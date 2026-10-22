@@ -93,16 +93,24 @@ type packPath struct {
 }
 
 type packDoc struct {
-	Space     string   `json:"space"`
-	Repo      string   `json:"repo,omitempty"` // an ADR's, with its path and the changes that wrote it
-	Path      string   `json:"path,omitempty"`
-	Ancestors []string `json:"ancestors"`
-	Labels    []string `json:"labels"`
-	Created   string   `json:"created"`
-	Mine      string   `json:"mine"` // "created by you; 7 of 9 versions yours"
-	Live      bool     `json:"live"`
-	Changes   []Ref    `json:"changes,omitempty"`
-	Body      string   `json:"body"`
+	Space     string          `json:"space"`
+	Repo      string          `json:"repo,omitempty"` // an ADR's, with its path and the changes that wrote it
+	Path      string          `json:"path,omitempty"`
+	Ancestors []string        `json:"ancestors"`
+	Labels    []string        `json:"labels"`
+	Created   string          `json:"created"`
+	Mine      string          `json:"mine"` // "created by you; 7 of 9 versions yours"
+	Live      bool            `json:"live"`
+	Changes   []packDocChange `json:"changes,omitempty"`
+	Body      string          `json:"body"`
+}
+
+// packDocChange is a change an ADR was written in, with who wrote it: a squash commit carries the
+// PR author's name whoever wrote its commits.
+type packDocChange struct {
+	ID    string `json:"id"`
+	Class string `json:"class"`
+	Title string `json:"title"`
 }
 
 type packOmitted struct {
@@ -281,7 +289,8 @@ func (f *Facts) packInput(it *Item) *packInput {
 		in.Doc = &packDoc{Space: d.Space, Repo: d.Repo, Path: d.Path, Ancestors: d.Ancestors, Labels: d.Labels,
 			Created: dayOf(d.CreatedAt), Mine: mine, Live: d.Live, Body: clip(d.body(), maxDocBody)}
 		for _, id := range d.Changes {
-			in.Doc.Changes = append(in.Doc.Changes, Ref{ID: id, Title: oneLine(f.changes[id].Title)})
+			c := f.changes[id]
+			in.Doc.Changes = append(in.Doc.Changes, packDocChange{ID: id, Class: c.Class, Title: oneLine(c.Title)})
 		}
 	}
 	return in
@@ -347,7 +356,11 @@ func renderPack(in *packInput, hash string) []byte {
 	if d := in.Doc; d != nil && d.Repo != "" {
 		w("\n## The decision record\n\n- %s: %s\n- created %s; %s\n", d.Repo, d.Path, d.Created, d.Mine)
 		for _, c := range d.Changes {
-			w("- written in %s · %s\n", c.ID, c.Title)
+			w("- written in %s", c.ID)
+			if c.Class != Self {
+				w(" (%s)", c.Class)
+			}
+			w(" · %s\n", c.Title)
 		}
 		w("\n%s\n", d.Body)
 	} else if d != nil {

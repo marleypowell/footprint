@@ -173,24 +173,31 @@ func fixture() *Raw {
 			Roles: []string{"editor"}, UserVersions: 1, IssueKeys: []string{}},
 	}
 	claude := collect.Signature{Name: "Claude", Email: "noreply@anthropic.com"}
-	version := func(sha, path string, author collect.Signature, date string, roles ...string) collect.DecisionVersion {
-		return collect.DecisionVersion{SHA: sha, Path: path, Author: sig(author, date), Subject: "docs", Roles: append([]string{}, roles...)}
+	version := func(sha, status, path string, author collect.Signature, date string, roles ...string) collect.DecisionVersion {
+		v := collect.DecisionVersion{SHA: sha, Path: path, Status: status[:1], Author: sig(author, date), Subject: "docs", Roles: append([]string{}, roles...)}
+		if len(status) > 1 {
+			v.Similarity = ptr(100)
+		}
+		return v
 	}
 	decisions := []collect.Decision{
-		// the user's, in c1 and by their agent in PR 5, renamed since by a colleague
+		// the user's, in c1 and by their agent in PR 5, edited by a colleague; renamed since, which is
+		// not a version
 		{Repo: "app", Path: "docs/decisions/0001-use-queues.md", URL: "https://code.example/org/app/blob/main/docs/decisions/0001-use-queues.md",
 			Title: "Use queues", IssueKeys: []string{"ENG-2"}, CreatedAt: "2024-01-02T10:00:00+01:00", Body: strings.Repeat("word ", 220) + "For ENG-2.",
 			Versions: []collect.DecisionVersion{
-				version("c1", "docs/decisions/001-use-queues.md", jane, "2024-01-02T10:00:00+01:00", "author", "committer"),
-				version("c9", "docs/decisions/001-use-queues.md", claude, "2024-01-04T11:00:00Z", "pr-author"),
-				version("o1", "docs/decisions/0001-use-queues.md", other, "2024-03-05T10:00:00Z"),
+				version("c1", "A", "docs/decisions/001-use-queues.md", jane, "2024-01-02T10:00:00+01:00", "author", "committer"),
+				version("c9", "M", "docs/decisions/001-use-queues.md", claude, "2024-01-04T11:00:00Z", "pr-author"),
+				version("o1", "M", "docs/decisions/001-use-queues.md", other, "2024-03-01T10:00:00Z"),
+				version("c11", "R100", "docs/decisions/01-use-queues.md", jane, "2024-03-01T10:00:00Z", "author", "committer"),
+				version("o3", "R100", "docs/decisions/0001-use-queues.md", other, "2024-03-05T10:00:00Z"),
 			}},
 		// a colleague's, that the user touched once
 		{Repo: "app", Path: "docs/decisions/0002-theirs.md", URL: "https://code.example/org/app/blob/main/docs/decisions/0002-theirs.md",
 			Title: "Theirs", IssueKeys: []string{}, CreatedAt: "2023-11-01T10:00:00Z", Body: strings.Repeat("word ", 400),
 			Versions: []collect.DecisionVersion{
-				version("o2", "docs/decisions/0002-theirs.md", other, "2023-11-01T10:00:00Z"),
-				version("c7", "docs/decisions/0002-theirs.md", jane, "2024-02-01T10:00:00Z", "author", "committer"),
+				version("o2", "A", "docs/decisions/0002-theirs.md", other, "2023-11-01T10:00:00Z"),
+				version("c7", "M", "docs/decisions/0002-theirs.md", jane, "2024-02-01T10:00:00Z", "author", "committer"),
 			}},
 	}
 	return &Raw{
@@ -322,7 +329,7 @@ func TestDocs(t *testing.T) {
 	check(t, "ADR: the user's commit and their agent's", []any{a.Ref, a.Type, a.CreatedAt, a.CreatedByMe, a.MyVersions, a.Versions, a.Share},
 		[]any{"adr+app+0001-use-queues", "adr", "2024-01-02T09:00:00Z", true, 2, 3, 66})
 	check(t, "ADR: substantial at its own length", []any{a.Words < substantialWords, a.Substantial, a.Item}, []any{true, true, "adr+app+0001-use-queues"})
-	check(t, "ADR: the changes that wrote it, and theirs and its issues' items", []any{a.Changes, a.Items, a.First, a.Last},
+	check(t, "ADR: the changes that wrote it (not the rename), and theirs and its issues' items", []any{a.Changes, a.Items, a.First, a.Last},
 		[]any{[]string{"app@c1", "app#5"}, []string{"ENG-1", "ENG-2"}, "2024-01-02", "2024-01-04"})
 	check(t, "ADR: a colleague's", []any{b.CreatedByMe, b.Share, b.Substantial, b.Item, b.Changes}, []any{false, 50, false, "", []string{"app@c7"}})
 	it := f.items[a.Ref]
@@ -336,6 +343,13 @@ func TestDocs(t *testing.T) {
 	}
 	if pack := string(renderPack(f.items["ENG-1"].pack, f.items["ENG-1"].Pack)); !strings.Contains(pack, "- adr+app+0001-use-queues · Use queues") {
 		t.Errorf("a feature's pack should name the ADR written in its changes:\n%s", pack)
+	}
+	if pack := string(renderPack(f.items["repo+app+2024q1"].pack, "")); strings.Contains(pack, "adr+app") {
+		t.Errorf("renaming an ADR is not writing it:\n%s", pack)
+	}
+	agentPR := &packInput{Doc: &packDoc{Repo: "app", Changes: []packDocChange{{ID: "app#9", Class: Agent, Title: "docs: an ADR"}}}}
+	if pack := string(renderPack(agentPR, "")); !strings.Contains(pack, "- written in app#9 (agent) · docs: an ADR") {
+		t.Errorf("an ADR's pack should say who wrote the changes it was written in:\n%s", pack)
 	}
 	check(t, "refs: by path where file names clash", (&Facts{raw: &Raw{Decisions: []collect.Decision{
 		{Repo: "web", Path: "apps/a/docs/adr/0001-x.md"}, {Repo: "web", Path: "apps/b/docs/adr/0001-x.md"}, {Repo: "a+b", Path: "docs/adr/0001-x.md"},

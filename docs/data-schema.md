@@ -146,11 +146,13 @@ and `totals.decisions` counts them. The `projects` stage writes it.
 | `title` | its first level-one heading, after any front matter; else the file name |
 | `issue_keys` | issue tracker keys the title and body name, restricted to the tracker's real projects as for commits; empty without an issue tracker |
 | `created_at` | the author date of its first version |
-| `versions` | every non-merge commit on the default branch that changed it, following renames, oldest first: `{sha, path, author, subject, roles}`. `path` is the file's name in that commit; `roles` are the user's roles in it as in `commits.jsonl`, `[]` when it is not one of the user's commits |
+| `versions` | every non-merge commit on the default branch that changed it, following renames, oldest first: `{sha, path, status, similarity?, author, subject, roles}`. `path` is the file's name in that commit; `status` what the commit did to it (`A`, `M`, `R`, `C`, `T`, as in `commits.jsonl` files), with a rename or copy's `similarity` (100: the text unchanged); `roles` are the user's roles in it as in `commits.jsonl`, `[]` when it is not one of the user's commits |
 | `bytes`, `truncated`, `body` | the current text, cut at 200,000 bytes, as written (front matter included) |
 
 Things the aggregation phase will want to handle:
 
+- **Renames are versions here.** Renumbering a directory of records touches each one: `R` with
+  `similarity` 100 changed no text.
 - **Authorship is per commit.** A squash-merged PR is one version, whoever wrote its commits; a
   colleague's squash merge naming the user as co-author is `co-author`. Agents' commits in the
   user's PRs are `pr-author`. MADR front matter often lists the `deciders`.

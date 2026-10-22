@@ -80,7 +80,7 @@ func (f *Facts) buildDocs() {
 		r := &f.raw.Decisions[i]
 		d := &Doc{
 			Ref: refs[i], ID: r.Repo + "/" + r.Path, Title: r.Title, URL: r.URL, Type: "adr", Status: "current", Repo: r.Repo,
-			Path: r.Path, Ancestors: []string{}, Labels: []string{}, Versions: len(r.Versions), Words: len(strings.Fields(r.Body)),
+			Path: r.Path, Ancestors: []string{}, Labels: []string{}, Words: len(strings.Fields(r.Body)),
 			Keys: f.knownKeys(r.IssueKeys), Items: []string{}, Changes: []string{}, adr: r,
 		}
 		changes := map[string]bool{}
@@ -89,6 +89,10 @@ func (f *Facts) buildDocs() {
 			if j == 0 && ok {
 				d.CreatedAt = at.UTC().Format(time.RFC3339)
 			}
+			if j > 0 && renameOnly(v) {
+				continue
+			}
+			d.Versions++
 			if !ok || !f.decisionVersionMine(v) {
 				continue
 			}
@@ -127,6 +131,12 @@ func (f *Facts) addDoc(d *Doc, minWords int) {
 	}
 	f.docs[d.ID] = d
 	f.Docs = append(f.Docs, d)
+}
+
+// renameOnly says whether a commit only moved or copied a decision record, leaving its text as it
+// was (renumbering a directory of them, say): not a version of it.
+func renameOnly(v collect.DecisionVersion) bool {
+	return (v.Status == "R" || v.Status == "C") && deref(v.Similarity) == 100
 }
 
 // decisionVersionMine says whether a commit that changed a decision record is the user's work:

@@ -3,6 +3,7 @@ package collect
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -307,12 +308,12 @@ func TestPipeline(t *testing.T) {
 		"https://code.example/org/repo/-/blob/main/docs/decisions/0001-use-queues.md"})
 	var history []string
 	for _, v := range d.Versions {
-		history = append(history, v.SHA+" "+v.Path+" "+strings.Join(v.Roles, ","))
+		history = append(history, v.SHA+" "+v.Status+fmt.Sprint(deref(v.Similarity))+" "+v.Path+" "+strings.Join(v.Roles, ","))
 	}
 	check("decision versions, oldest first, through the rename", history, []string{
-		decided + " docs/decisions/001-use-queues.md author,committer",
-		edited + " docs/decisions/001-use-queues.md ",
-		renumbered + " docs/decisions/0001-use-queues.md author,committer",
+		decided + " A0 docs/decisions/001-use-queues.md author,committer",
+		edited + " M0 docs/decisions/001-use-queues.md ",
+		renumbered + " R100 docs/decisions/0001-use-queues.md author,committer",
 	})
 	check("decision created", d.CreatedAt, d.Versions[0].Author.Date)
 

@@ -5,6 +5,7 @@ import (
 	"path"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/marleypowell/footprint/internal/tracker"
@@ -37,11 +38,13 @@ type Decision struct {
 
 // DecisionVersion is one commit on the default branch that changed a decision record.
 type DecisionVersion struct {
-	SHA     string    `json:"sha"`
-	Path    string    `json:"path"` // the file's path in that commit, which renames change
-	Author  Signature `json:"author"`
-	Subject string    `json:"subject"`
-	Roles   []string  `json:"roles"` // the user's roles in it, as in commits.jsonl; [] when not theirs
+	SHA        string    `json:"sha"`
+	Path       string    `json:"path"`                 // the file's path in that commit, which renames change
+	Status     string    `json:"status"`               // what the commit did to it: A, M, R, C, T (as in commits.jsonl files)
+	Similarity *int      `json:"similarity,omitempty"` // a rename or copy's; 100 when the text is unchanged
+	Author     Signature `json:"author"`
+	Subject    string    `json:"subject"`
+	Roles      []string  `json:"roles"` // the user's roles in it, as in commits.jsonl; [] when not theirs
 }
 
 // decisions finds the repo's decision records on its default branch and keeps those with a commit
@@ -98,7 +101,7 @@ func isDecision(file string) bool {
 
 // fileHistory is every non-merge commit at ref that changed file, following renames, oldest first.
 func fileHistory(ctx context.Context, mirror, ref, file string) ([]DecisionVersion, error) {
-	out, err := git(ctx, mirror, nil, "log", "--no-merges", "--follow", "--name-only", "-z",
+	out, err := git(ctx, mirror, nil, "log", "--no-merges", "--follow", "--name-status", "-z",
 		"--format=%x1e%H%x1f%an%x1f%ae%x1f%aI%x1f%s%x1f", ref, "--", file)
 	if err != nil {
 		return nil, err
@@ -109,9 +112,16 @@ func fileHistory(ctx context.Context, mirror, ref, file string) ([]DecisionVersi
 		if len(f) != 6 {
 			continue
 		}
-		versions = append(versions, DecisionVersion{
-			SHA: f[0], Path: strings.Trim(f[5], "\x00\n"), Author: Signature{Name: f[1], Email: f[2], Date: f[3]}, Subject: f[4],
-		})
+		// "STATUS\0path\0", or for a rename or copy "R100\0old\0new\0"
+		names := strings.Split(strings.Trim(f[5], "\x00\n"), "\x00")
+		v := DecisionVersion{SHA: f[0], Path: names[len(names)-1], Author: Signature{Name: f[1], Email: f[2], Date: f[3]}, Subject: f[4]}
+		if status := names[0]; status != "" {
+			v.Status = status[:1]
+			if n, err := strconv.Atoi(status[1:]); err == nil {
+				v.Similarity = &n
+			}
+		}
+		versions = append(versions, v)
 	}
 	slices.Reverse(versions)
 	return versions, nil

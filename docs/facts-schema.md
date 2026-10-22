@@ -63,7 +63,7 @@ The raw data's caveats, and what facts does with each:
 | referenced-only issues | Count through the changes naming them, and their item. |
 | ancestors | Context: they make initiatives and give features their epics, and the user's comments on them count as active days, but they are not the user's issues. |
 | wiki authorship | `share` is the user's versions over all versions. A page is a substantial doc when it has 300 words or more, the user's share is half or more, and they created it or saved 3 versions or more. |
-| ADR authorship | A decision record's versions are the commits that changed it on the default branch. A version is the user's when they authored the commit, or an AI agent did in their PR or crediting them; a colleague's commit naming them as co-author is not. `share` and the rule are a page's, from 200 words: a decision record is short by design. Its versions count toward the doc's item; the same commits count toward their changes' items as usual. |
+| ADR authorship | A decision record's versions are the commits that changed its text on the default branch (not a rename or copy that kept it as it was, after the first). A version is the user's when they authored the commit, or an AI agent did in their PR or crediting them; a colleague's commit naming them as co-author is not. `share` and the rule are a page's, from 200 words: a decision record is short by design. Its versions count toward the doc's item; the same commits count toward their changes' items as usual. |
 | time | Every timestamp is parsed (commit dates carry their author's offset) and counted by its UTC day. Windows are whole UTC days, both ends included. |
 
 ## Work items
@@ -189,7 +189,7 @@ In a window's items.jsonl, `totals`, `first`, `last` and `active_days` are the w
 its issue's description, the issues in it, the user's own comments, its changes (the largest, when
 there are many), the larger changes' descriptions, the user's commit messages, where the changes
 were, the docs naming it or written in its changes, a doc's text (an ADR's with the changes that
-wrote it), and the user's corrections from `context/items/<id>.md`.
+wrote it, and who wrote each when not the user: a squash commit carries the PR author's name), and the user's corrections from `context/items/<id>.md`.
 Every cut is marked `… [+N]`; a pack stays under 16 KiB. Its **input hash** (`pack` in items.jsonl)
 is the SHA-256 of those inputs and `pack_version`, so a change to how packs are drawn does not make
 notes stale.
