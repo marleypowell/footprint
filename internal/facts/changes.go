@@ -2,12 +2,12 @@ package facts
 
 import (
 	"cmp"
-	"path"
 	"slices"
 	"strings"
 	"time"
 
 	"github.com/marleypowell/footprint/internal/collect"
+	"github.com/marleypowell/footprint/internal/filekind"
 )
 
 // Change kinds.
@@ -64,7 +64,7 @@ type Lines struct {
 // Excluded totals what line counts leave out, by reason.
 type Excluded struct {
 	Generated ExcludedLines `json:"generated"` // lockfiles and other generated files, by name
-	Bulk      ExcludedLines `json:"bulk"`      // single file changes of more than bulkLines lines
+	Bulk      ExcludedLines `json:"bulk"`      // single file changes of more than filekind.BulkLines lines
 }
 
 type ExcludedLines struct {
@@ -79,24 +79,8 @@ type fileChange struct {
 	generated, bulky bool
 }
 
-// bulkLines is the size above which one file's change is treated as generated or vendored (a test
-// fixture, an API dump, a moved tree) rather than written.
-const bulkLines = 5000
-
-var generatedNames = map[string]bool{
-	"package-lock.json": true, "npm-shrinkwrap.json": true, "yarn.lock": true, "pnpm-lock.yaml": true, "bun.lockb": true,
-	"go.sum": true, "cargo.lock": true, "gemfile.lock": true, "composer.lock": true, "poetry.lock": true,
-	"pipfile.lock": true, "uv.lock": true, "packages.lock.json": true, "paket.lock": true, "podfile.lock": true,
-}
-
-func isGenerated(p string) bool {
-	base := strings.ToLower(path.Base(p))
-	return generatedNames[base] || strings.HasSuffix(base, ".min.js") || strings.HasSuffix(base, ".min.css") ||
-		strings.HasSuffix(base, ".map") || strings.HasSuffix(base, ".snap")
-}
-
 func newFileChange(p string, added, deleted int) fileChange {
-	return fileChange{path: p, added: added, deleted: deleted, generated: isGenerated(p), bulky: added+deleted > bulkLines}
+	return fileChange{path: p, added: added, deleted: deleted, generated: filekind.Generated(p), bulky: filekind.Bulky(added, deleted)}
 }
 
 // lines totals files, keeping generated and bulk changes apart.

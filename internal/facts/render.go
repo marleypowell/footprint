@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+
+	"github.com/marleypowell/footprint/internal/filekind"
 )
 
 // metrics label the Totals fields, by their names in facts.json, in the order overviews show them.
@@ -73,7 +75,7 @@ func (f *Facts) overview(w Window) []byte {
 	}
 	ex := s.Excluded
 	p("- Line counts leave out generated files (%d file changes, +%d -%d) and single file changes of more\n", ex.Generated.Files, ex.Generated.Added, ex.Generated.Deleted)
-	p("  than %d lines (%d, +%d -%d), all time.\n", bulkLines, ex.Bulk.Files, ex.Bulk.Added, ex.Bulk.Deleted)
+	p("  than %d lines (%d, +%d -%d), all time.\n", filekind.BulkLines, ex.Bulk.Files, ex.Bulk.Added, ex.Bulk.Deleted)
 	p("- Not collected, so their absence here says nothing: %s.\n\n", strings.Join(notCollected, "; "))
 
 	p("## Totals\n\n| | | name |\n|---|--:|---|\n")
