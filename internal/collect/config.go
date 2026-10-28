@@ -55,6 +55,9 @@ type IdentityConfig struct {
 	Emails           []string `json:"emails"`            // matched case-insensitively
 	Names            []string `json:"names"`             // matched exactly (case-insensitively)
 	DiscoveryPattern string   `json:"discovery_pattern"` // regex for the identities report and message grep
+	// NotMe are emails or names in the identities report that the user confirmed are someone
+	// else, so doctor stops asking about them. Matching ignores them.
+	NotMe []string `json:"not_me,omitempty"`
 }
 
 type MirrorConfig struct {

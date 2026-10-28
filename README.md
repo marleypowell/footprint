@@ -41,8 +41,8 @@ Or install it with `go install github.com/marleypowell/footprint/cmd/footprint@l
 against the working directory. Without a clone there is no `.env.example` to copy, so create `.env`
 with `ATLASSIAN_EMAIL` and `ATLASSIAN_API_TOKEN`.
 
-Then open `data/raw/index.json`, and check `data/raw/org/verification.json`:
-`attributed_commits_missing_from_dataset` should be `0`.
+`all` ends with `doctor`, which says whether the dataset is complete and what to run or change when
+it is not (see [Completeness](#completeness)). Then open `data/raw/index.json`.
 
 ## Requirements
 
@@ -117,6 +117,8 @@ Every stage is idempotent and overwrites its own output. To refresh later, run
 - `identity.discovery_pattern`: a regex (valid as both RE2 and POSIX ERE) that the `identities`
   report uses to find variants worth adding, and that `commits` uses to find possible
   `Co-authored-by` trailers.
+- `identity.not_me` (optional): emails or names in the `identities` report that you have confirmed
+  are someone else, so `doctor` stops asking about them.
 - `code_host`, `catalog`, `issue_tracker`, `wiki`: one section per tool. The issue tracker and wiki
   are optional: without an `issue_tracker`, commits and PRs have no `issue_keys` and the `issues`
   stage does nothing; without a `wiki`, the `pages` stage does nothing. `kind` picks the adapter, and
@@ -158,6 +160,22 @@ and `TestPipeline` runs every stage through them. The Jira and Confluence adapte
 `internal/atlassian` (authentication, retries, and rendering Atlassian's rich text as Markdown).
 
 ## Completeness
+
+`bin/footprint doctor` reads the files below, the mirror state and the config, and prints one line
+per check (`PASS`, `WARN`, `FAIL` or `SKIP`) with the fix under it; `-json` prints the report as
+JSON. It exits 1 when a check fails, and calls no tools, so it also works on a copy of a dataset.
+
+| check | fails or warns when |
+|---|---|
+| `verify` | commits the code host credits to you are missing; names the emails to add |
+| `identities` | an identity resembling you is neither configured nor in `identity.not_me` (a warning: only you can say whose it is) |
+| `issues` | keys failed to load (fail) or are hidden from the token (warning) |
+| `pages` | a wiki is configured but `pages` never ran |
+| `mirror` | a repo failed to mirror, or was never mirrored |
+| `stale` | an output is older than what it was made from (commits after `verify`, a changed identity, mirrors fetched after `commits`), or the data is over 30 days old |
+| `env` | a variable a configured tool authenticates with is unset (names only), or `.env` is readable by others |
+
+The files it reads:
 
 - `data/raw/org/identities.json` lists every author/committer/co-author identity matching
   `discovery_pattern`. An entry with `matched_by_config: null` that is really you means an email or

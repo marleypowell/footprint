@@ -4,11 +4,13 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"github.com/marleypowell/footprint/internal/atlassian"
 	"github.com/marleypowell/footprint/internal/catalog"
 	"github.com/marleypowell/footprint/internal/catalog/backstage"
 	"github.com/marleypowell/footprint/internal/codehost"
 	"github.com/marleypowell/footprint/internal/codehost/github"
 	"github.com/marleypowell/footprint/internal/collect"
+	"github.com/marleypowell/footprint/internal/doctor"
 	"github.com/marleypowell/footprint/internal/tracker"
 	"github.com/marleypowell/footprint/internal/tracker/jira"
 	"github.com/marleypowell/footprint/internal/wiki"
@@ -72,6 +74,24 @@ func newTools(cfg *collect.Config) (collect.Tools, error) {
 		}
 	}
 	return tools, nil
+}
+
+// envNeeds lists the environment variables the configured tools authenticate with, for doctor.
+// The code host needs none: GitHub falls back to the gh CLI's token.
+func envNeeds(cfg *collect.Config) []doctor.EnvNeed {
+	var needs []doctor.EnvNeed
+	add := func(tool string, groups [][]string) {
+		for _, g := range groups {
+			needs = append(needs, doctor.EnvNeed{Tool: tool, AnyOf: g})
+		}
+	}
+	if cfg.IssueTracker != nil && cfg.IssueTracker.Kind == "jira" {
+		add("jira", atlassian.Jira.Env())
+	}
+	if cfg.Wiki != nil && cfg.Wiki.Kind == "confluence" {
+		add("confluence", atlassian.Confluence.Env())
+	}
+	return needs
 }
 
 func unsupported(section, kind string, supported ...string) error {

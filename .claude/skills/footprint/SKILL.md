@@ -32,7 +32,8 @@ Work from the repo root. Build first when `bin/footprint` is missing or older th
 
 ## Steps
 
-1. **Facts.** Run `bin/footprint facts`, adding `-from YYYY-MM-DD -to YYYY-MM-DD` for a bounded
+1. **Facts.** Run `bin/footprint doctor`. When it reports a FAIL, tell the user what it found and
+   its fix before you go on: the facts would count an incomplete dataset. Then run `bin/footprint facts`, adding `-from YYYY-MM-DD -to YYYY-MM-DD` for a bounded
    window. Read the window's `overview.md`: `data/facts/windows/<from>_<to>/`, or `data/facts/` for
    all time. Done when the command exits 0 and you have told the user the coverage gaps that bear on
    their request.

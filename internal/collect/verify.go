@@ -19,6 +19,17 @@ type MissingCommit struct {
 	Subject string `json:"subject"`
 }
 
+// Verification is <data>/org/verification.json.
+type Verification struct {
+	GeneratedAt                    string          `json:"generated_at"`
+	Method                         string          `json:"method"`
+	HostAttributedCommits          int             `json:"host_attributed_commits"`
+	DatasetCommits                 int             `json:"dataset_commits"`
+	DatasetAuthoredOnDefaultBranch int             `json:"dataset_authored_on_default_branch"`
+	AttributedMissingFromDataset   int             `json:"attributed_commits_missing_from_dataset"`
+	Missing                        []MissingCommit `json:"missing"`
+}
+
 // verify cross-checks the dataset against the code host's own attribution: every default-branch
 // commit the host links to the account should be present. This catches identity variants the
 // config does not know about.
@@ -65,15 +76,7 @@ func (h *harness) verify(ctx context.Context) error {
 			authoredDefault++
 		}
 	}
-	err = writeJSON(filepath.Join(h.raw, "org", "verification.json"), struct {
-		GeneratedAt                    string          `json:"generated_at"`
-		Method                         string          `json:"method"`
-		HostAttributedCommits          int             `json:"host_attributed_commits"`
-		DatasetCommits                 int             `json:"dataset_commits"`
-		DatasetAuthoredOnDefaultBranch int             `json:"dataset_authored_on_default_branch"`
-		AttributedMissingFromDataset   int             `json:"attributed_commits_missing_from_dataset"`
-		Missing                        []MissingCommit `json:"missing"`
-	}{
+	err = writeJSON(filepath.Join(h.raw, "org", "verification.json"), Verification{
 		GeneratedAt:                    nowISO(),
 		Method:                         "default-branch commits the code host attributes to the account, compared with the dataset",
 		HostAttributedCommits:          len(host),

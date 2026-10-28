@@ -268,6 +268,8 @@ Things the aggregation phase will want to handle:
 (GitHub: commit search, via any verified email) that is missing from this dataset:
 `attributed_commits_missing_from_dataset` counts them, out of `host_attributed_commits`. An empty
 `missing` list means the identity configuration caught everything the host knows about.
+`footprint doctor` reads this file, `org/identities.json`, `issues/unresolved.json` and the mirror
+state, and says what to run or change.
 
 Not covered:
 - Repos the account cannot see, or deleted repos; repos never migrated to the current host.

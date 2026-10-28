@@ -25,7 +25,9 @@ requests, issues and wiki pages.
 Usage:
   footprint init --org <org>          write the config for the authenticated user
   footprint [flags] <stage>...        run stages in the order given
-  footprint [flags] all               run every stage
+  footprint [flags] all               run every stage, then doctor
+  footprint [flags] doctor            say whether the dataset is complete, and what to run or
+                                      change when it is not (exits 1 when it is not)
   footprint [flags] facts             decide what counts, from the collected data -> <facts>/
   footprint [flags] check <file>...   check a note or draft against the facts
 
@@ -47,6 +49,12 @@ Stages, in the order "all" runs them:
               above them (stories, epics)                      -> <data>/issues/<project>.jsonl
   pages       wiki pages, blog posts etc. the user created or edited, with versions
               and the body as Markdown                         -> <data>/wiki/<space>.jsonl
+
+doctor reads the dataset, the mirror state and the config (if any), and the names of the variables
+the tools authenticate with (never their values): verify (commits the code host credits to the
+user that the dataset lacks, with the emails to add), identities (variants that may be the user;
+identity.not_me dismisses the rest), issues (keys that failed to load), pages, mirror, stale
+(output older than what it was made from) and env.
 
 facts and check read only the collected data, the notes and the context (no config or tokens):
   facts       work items, changes, issues, docs, repos and totals, with an evidence pack per
@@ -85,6 +93,8 @@ func main() {
 	flags.StringVar(&fo.to, "to", "", "facts: ... to this day, included")
 	flags.BoolVar(&fo.plain, "plain", false, "check: also write <file>.final.md without the citations")
 	flags.BoolVar(&fo.links, "links", false, "check: also write <file>.final.md with the citations as links")
+	var doctorJSON bool
+	flags.BoolVar(&doctorJSON, "json", false, "doctor: write the report as JSON")
 	flags.Usage = func() {
 		fmt.Fprint(flags.Output(), usage)
 		flags.PrintDefaults()
@@ -127,8 +137,17 @@ func main() {
 		}
 	case "check":
 		err = runCheck(opts.DataDir, fo, stages[1:])
+	case "doctor":
+		err = errors.New("run doctor on its own")
+		if len(stages) == 1 {
+			err = runDoctor(opts, envPath, doctorJSON)
+		}
 	default:
 		err = run(ctx, opts, stages)
+		if err == nil && slices.Contains(stages, "all") {
+			logx.Printf("=== doctor")
+			err = runDoctor(opts, envPath, false)
+		}
 	}
 	stop()
 	if err != nil {

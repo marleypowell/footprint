@@ -19,11 +19,10 @@ flags and config are in `README.md`.
 - `config.json` is the person's identity. Generate it with `init --org <org>` for the authenticated
   user, then show them `identity.emails` and `identity.names` and get their confirmation before
   running `all`.
-- A run is complete when `data/raw/org/verification.json` has
-  `attributed_commits_missing_from_dataset: 0` and every `matched_by_config: null` entry in
-  `data/raw/org/identities.json` is someone else. Fix gaps in the config, then re-run
-  `commits projects verify issues`. For issues, `data/raw/issues/unresolved.json` should hold no
-  `failed` entries (re-run `issues`), and its `not_found` keys should be typos or deleted issues.
+- A run is complete when `bin/footprint doctor` exits 0 and every identity its `identities` check
+  lists is the user's (then configured) or someone else's (then in `identity.not_me`). It prints the
+  fix under each finding. Its config snippets are suggestions: show them to the user and get their
+  confirmation before adding them. `not_found` issue keys should be typos or deleted issues.
 - The Jira and Confluence adapters need `ATLASSIAN_EMAIL` and `ATLASSIAN_API_TOKEN` (or per-product
   `JIRA_API_TOKEN` / `CONFLUENCE_API_TOKEN`): `issues` and `pages` load from them, and `prs`,
   `commits`, `projects` and `pages` list the Jira projects to recognise issue keys. The binary reads

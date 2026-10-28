@@ -35,6 +35,15 @@ type IdentityEntry struct {
 	Repos           []string `json:"repos"`
 }
 
+// IdentitiesReport is <data>/org/identities.json. Configured is the identity config the stage ran
+// with.
+type IdentitiesReport struct {
+	GeneratedAt string          `json:"generated_at"`
+	Configured  IdentityConfig  `json:"configured"`
+	Note        string          `json:"note"`
+	Identities  []IdentityEntry `json:"identities"`
+}
+
 func (h *harness) scanIdentities(ctx context.Context, repo Repo) (*identityCounts, error) {
 	path := h.mirrorPath(repo.Name)
 	found := &identityCounts{counts: map[identityKey]int{}}
@@ -118,12 +127,7 @@ func (h *harness) identities(ctx context.Context) error {
 	}
 	total := func(p IdentityEntry) int { return p.Author + p.Committer + p.CoAuthor }
 	sort.SliceStable(rows, func(i, j int) bool { return total(rows[i]) > total(rows[j]) })
-	err = writeJSON(filepath.Join(h.raw, "org", "identities.json"), struct {
-		GeneratedAt string          `json:"generated_at"`
-		Configured  IdentityConfig  `json:"configured"`
-		Note        string          `json:"note"`
-		Identities  []IdentityEntry `json:"identities"`
-	}{
+	err = writeJSON(filepath.Join(h.raw, "org", "identities.json"), IdentitiesReport{
 		GeneratedAt: nowISO(),
 		Configured:  h.cfg.Identity,
 		Note: "commit counts are per (name, email) pair across all refs of all mirrors; " +

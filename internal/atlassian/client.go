@@ -41,6 +41,11 @@ const (
 	tokenHelp   = "create one at https://id.atlassian.com/manage-profile/security/api-tokens"
 )
 
+// Env lists the environment variables Connect authenticates with: one of each group must be set.
+func (p Product) Env() [][]string {
+	return [][]string{{"ATLASSIAN_EMAIL"}, {p.tokenEnv, "ATLASSIAN_API_TOKEN"}}
+}
+
 // Client calls one product's REST API on one site. It is safe for concurrent use.
 type Client struct {
 	base       string // where API paths go: the site, or the gateway for the site's cloud ID
