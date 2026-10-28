@@ -26,26 +26,29 @@ type Facts struct {
 	Repos        []*Repo  // by name
 	Excluded     Excluded // what line counts leave out
 
-	raw          *Raw
-	people       *people
-	userID       string             // the user's account in the issue tracker, from their marked activity
-	keyOf        map[string]string  // every key an issue answers to (upper case) -> its current key
-	issues       map[string]*Issue  // by current key
-	items        map[string]*Item   // by id
-	changes      map[string]*Change // by id
-	changeOf     map[string]string  // repo@sha of a commit of the user's -> the change it is part of
-	docs         map[string]*Doc    // by page id
-	reviews      map[string]*Review // by ref
-	technologies map[string]*Technology
-	events       []event
-	notes        map[string]*noteFile // by file name (the item id, path-encoded), read from the notes directory
-	orphans      []string             // notes naming no item
-	subjects     map[string]string    // repo@sha -> commit subject
-	hosts        map[string]bool      // the hosts of the dataset's links, for check
-	urls         map[string]bool
-	projectKeys  map[string]bool
-	context      map[string]string // the user's own words per item id, from context/items/<id>.md
-	contexts     []string          // every context file's text, for numbers the user stated
+	raw              *Raw
+	people           *people
+	userID           string             // the user's account in the issue tracker, from their marked activity
+	keyOf            map[string]string  // every key an issue answers to (upper case) -> its current key
+	issues           map[string]*Issue  // by current key
+	items            map[string]*Item   // by id
+	changes          map[string]*Change // by id
+	changeOf         map[string]string  // repo@sha of a commit of the user's -> the change it is part of
+	docs             map[string]*Doc    // by page id
+	reviews          map[string]*Review // by ref
+	technologies     map[string]*Technology
+	framework        *framework  // context/framework.md; nil without one
+	evidenceFiles    []*Evidence // context/evidence/<slug>.md
+	evidenceProblems []string
+	events           []event
+	notes            map[string]*noteFile // by file name (the item id, path-encoded), read from the notes directory
+	orphans          []string             // notes naming no item
+	subjects         map[string]string    // repo@sha -> commit subject
+	hosts            map[string]bool      // the hosts of the dataset's links, for check
+	urls             map[string]bool
+	projectKeys      map[string]bool
+	context          map[string]string // the user's own words per item id, from context/items/<id>.md
+	contexts         []string          // every context file's text, for numbers the user stated
 }
 
 // Ref names another record: an item, issue or page.
@@ -71,6 +74,12 @@ func Build(raw *Raw, in Inputs) (*Facts, error) {
 	if f.context, f.contexts, err = readContext(in.ContextDir); err != nil {
 		return nil, err
 	}
+	if f.framework, err = readFramework(in.ContextDir); err != nil {
+		return nil, err
+	}
+	if f.evidenceFiles, f.evidenceProblems, err = readEvidence(in.ContextDir); err != nil {
+		return nil, err
+	}
 	f.buildIssues()
 	f.buildChanges()
 	f.buildDocs()
@@ -81,6 +90,12 @@ func Build(raw *Raw, in Inputs) (*Facts, error) {
 		return nil, err
 	}
 	f.buildPacks()
+	for _, it := range f.Items {
+		it.Shows = []string{}
+		if n, ok := f.tagged(it); ok {
+			it.Shows = n.shows
+		}
+	}
 	return f, nil
 }
 

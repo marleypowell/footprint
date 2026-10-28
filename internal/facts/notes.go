@@ -28,8 +28,12 @@ type noteFile struct {
 	path   string
 	item   string // frontmatter
 	inputs string // frontmatter: the pack hash it was written from
-	body   string
-	err    string // why it is invalid; "" when it is well formed
+	// shows and framework are its tags: the criteria of the framework it shows, and the hash of
+	// the framework they are of
+	shows     []string
+	framework string
+	body      string
+	err       string // why it is invalid; "" when it is well formed
 }
 
 // readNotes reads every <id>.md in dir. A missing directory has no notes.
@@ -69,6 +73,7 @@ func parseNote(path, text string) *noteFile {
 		return n
 	}
 	n.item, n.inputs = front["item"], front["inputs"]
+	n.shows, n.framework = tagList(front["shows"]), front["framework"]
 	var missing []string
 	headings := headingsOf(body)
 	for _, s := range NoteSections {

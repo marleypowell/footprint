@@ -215,8 +215,10 @@ bin/footprint check data/drafts/review.md             # citations and numbers in
   lists the numbers that match no fact. `-plain` or `-links` writes the version to share.
 - Your own words go in `data/context/`: `profile.md` (titles, dates, teams), `framework.md` (the
   career framework to map evidence to), `pay.md` (pay and market figures, for a pay rise case),
-  `interview-<company>.md` (the role and the stage, for interview preparation), and `items/<id>.md`
-  (impact or corrections for one item, which join its pack).
+  `interview-<company>.md` (the role and the stage, for interview preparation), `items/<id>.md`
+  (impact or corrections for one item, which join its pack), and `evidence/<slug>.md` (evidence from
+  outside the tools, for the framework's criteria). Marking `framework.md` with `{#<id>}` and
+  `{level=<id>}` makes `facts` report which criteria have evidence (`criteria.md`).
 
 In Claude Code, the `footprint` skill ([`.claude/skills/footprint/`](.claude/skills/footprint/SKILL.md))
 runs these steps to answer questions about your work, and to write a CV or LinkedIn profile, a

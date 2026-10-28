@@ -18,7 +18,7 @@ have none, the case rests on value and scope, and the Market section says so.
    part, and what it changed for the business, in the user's words where the sources say nothing
    (`items/<id>.md`), with citations.
 3. **Scope beyond the role.** Where the window's work goes beyond the current level's expectations
-   in `framework.md`, or beyond the work of their title's first year (`profile.md`, the by-year
+   in `framework.md` (the next level's `covered` criteria in the window's `criteria.md`), or beyond the work of their title's first year (`profile.md`, the by-year
    table): initiatives they drove, repos they started (`repos.jsonl` -> `started_by_me`), systems
    they worked across, work they raised for others, docs that shaped decisions.
 4. **Market.** The user's market evidence from `pay.md`, each figure with its source and date.

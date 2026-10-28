@@ -26,8 +26,10 @@ type Summary struct {
 	TeamSignals []TeamSignals `json:"team_signals"`
 	// Technologies are those with the user's activity in the window, as of the window
 	Technologies []TechSummary `json:"technologies"`
-	Excluded     Excluded      `json:"excluded"`
-	Notes        NoteCounts    `json:"notes"`
+	// Framework is the window's coverage of context/framework.md's criteria; null without one
+	Framework *FrameworkSummary `json:"framework"`
+	Excluded  Excluded          `json:"excluded"`
+	Notes     NoteCounts        `json:"notes"`
 }
 
 // Coverage says what the dataset can and cannot show.
@@ -77,6 +79,7 @@ func (f *Facts) Summary(w Window) Summary {
 	s.ByYear, s.ByQuarter = periods(f.events, w)
 	s.TeamSignals = f.teamSignals(w)
 	s.Technologies = f.techSummaries(w)
+	s.Framework = f.frameworkSummary(w)
 	s.Coverage = Coverage{Sources: f.raw.Index.Sources, NotCollected: f.notCollected()}
 	s.Coverage.First, s.Coverage.Last = span(f.events, w)
 	for _, pr := range f.raw.PRs {
@@ -165,6 +168,10 @@ func (f *Facts) Write(dir string, windows ...Window) error {
 	files["overview.md"] = f.overview(All)
 	files["catalogue.md"] = f.catalogue()
 	files["todo.txt"] = f.todo(All)
+	if f.framework != nil {
+		files["criteria.md"] = f.criteriaDoc(All)
+		files["tags.txt"] = f.tagsTodo()
+	}
 	for _, it := range f.Items {
 		files[filepath.Join("packs", itemPath(it.ID)+".md")] = renderPack(it.pack, it.Pack)
 	}
@@ -174,6 +181,9 @@ func (f *Facts) Write(dir string, windows ...Window) error {
 		put(filepath.Join(d, "items.jsonl"))(jsonl(f.windowItems(w)))
 		files[filepath.Join(d, "overview.md")] = f.overview(w)
 		files[filepath.Join(d, "todo.txt")] = f.todo(w)
+		if f.framework != nil {
+			files[filepath.Join(d, "criteria.md")] = f.criteriaDoc(w)
+		}
 	}
 	if err := errors.Join(errs...); err != nil {
 		return err

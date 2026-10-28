@@ -119,6 +119,20 @@ func (c *checker) checkNote(path string, front map[string]string, body string) {
 			c.add(0, true, "missing section: ## %s", s)
 		}
 	}
+	shows, fw := tagList(front["shows"]), c.f.framework
+	switch {
+	case fw == nil || len(fw.criteria) == 0:
+		if len(shows) > 0 {
+			c.add(0, false, "shows: names criteria, but context/framework.md marks none")
+		}
+	case front["framework"] != fw.hash && (len(shows) > 0 || front["framework"] != ""):
+		c.add(0, false, "tagged against an earlier framework: check its shows: against criteria.md, then set framework: %s", fw.hash)
+	}
+	for _, id := range shows {
+		if fw != nil && fw.byID[id] == nil {
+			c.add(0, true, "shows: %s is not a criterion of context/framework.md (criteria.md lists them)", id)
+		}
+	}
 }
 
 // evidence is everything a note on it may cite.
@@ -237,7 +251,7 @@ func (c *checker) paragraph(lines []string, idx []int) {
 			id, url := c.f.resolve(ref)
 			switch {
 			case id == "":
-				c.add(i+1, true, "[[%s]] names nothing in the dataset (an item, issue key, repo#PR, repo@sha, doc+id, adr+repo+name or review+repo#PR)", ref)
+				c.add(i+1, true, "[[%s]] names nothing in the dataset (an item, issue key, repo#PR, repo@sha, doc+id, adr+repo+name, review+repo#PR or evidence+slug)", ref)
 			case c.allowed != nil && !c.allowed[id]:
 				c.add(i+1, true, "[[%s]] is not part of %s's evidence: a note cites only its own item's records", ref, c.note.ID)
 			default:
@@ -449,6 +463,11 @@ func (f *Facts) resolve(ref string) (id, link string) {
 	}
 	if r := f.reviews[ref]; r != nil {
 		return r.Ref, r.URL
+	}
+	for _, e := range f.evidenceFiles {
+		if e.Ref == ref {
+			return e.Ref, ""
+		}
 	}
 	return "", ""
 }

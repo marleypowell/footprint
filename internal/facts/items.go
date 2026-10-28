@@ -67,8 +67,10 @@ type Item struct {
 	Reviews     []string  `json:"reviews"`      // others' PRs naming it that the user reviewed
 	// Technologies are its landed changes' (and an initiative's features'), most lines first
 	Technologies []string `json:"technologies"`
-	Pack         string   `json:"pack"` // the input hash of packs/<id>.md
-	Note         string   `json:"note"` // current, stale, missing, invalid, or optional (not required, none yet)
+	// Shows are the framework criteria its current note is tagged with, against the framework as it is
+	Shows []string `json:"shows"`
+	Pack  string   `json:"pack"` // the input hash of packs/<id>.md
+	Note  string   `json:"note"` // current, stale, missing, invalid, or optional (not required, none yet)
 
 	own    *Issue
 	pack   *packInput

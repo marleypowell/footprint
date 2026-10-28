@@ -647,11 +647,140 @@ func TestTechnologies(t *testing.T) {
 	}
 }
 
+const testFramework = "# Framework\n\n## Competencies\n\n" +
+	"- **Code {#code}:** Write clean code.\n" +
+	"- **Quality {#quality reviews}:** Drive best practices via code reviews.\n\n" +
+	"#### Senior Engineer {level=senior}\n\n" +
+	"- Coach on technical practices. {#senior-coach}\n" +
+	"- Drive process improvements. {#senior-process}\n\n" +
+	"#### Lead Engineer {level=lead}\n\n" +
+	"- Lead work-streams. {#lead-streams}\n\n" +
+	"### Proficiency\n\n" +
+	"| Competency | Applying {level=applying} | Leading {level=leading} |\n|---|---|---|\n" +
+	"| Testing {#testing} | Writes tests | Drives the test strategy |\n| Other | x | y |\n\n" +
+	"- Code again {#code}\n\n```\n{level=fenced}\n```\n\n- a stray {level=oops}\n"
+
+func TestFramework(t *testing.T) {
+	fw := parseFramework(testFramework)
+	var got []string
+	for _, c := range fw.criteria {
+		got = append(got, fmt.Sprintf("%s|%s|%s|%v", c.ID, c.Level, c.Text, c.Reviews))
+	}
+	check(t, "criteria", got, []string{
+		"code||Code: Write clean code.|false",
+		"quality||Quality: Drive best practices via code reviews.|true",
+		"senior-coach|senior|Coach on technical practices.|false",
+		"senior-process|senior|Drive process improvements.|false",
+		"lead-streams|lead|Lead work-streams.|false",
+		"testing@applying|applying|Testing: Writes tests|false",
+		"testing@leading|leading|Testing: Drives the test strategy|false",
+	})
+	check(t, "problems", fw.problems, []string{"line 24: code is marked twice; the first counts",
+		"line 30: {level=oops} is not on a heading or a table's header row"})
+	check(t, "Windows line endings, same hash", parseFramework(strings.ReplaceAll(testFramework, "\n", "\r\n")).hash, fw.hash)
+	if parseFramework(strings.Replace(testFramework, "clean code", "clean, tested code", 1)).hash == fw.hash {
+		t.Error("rewording a criterion keeps the hash")
+	}
+	f := build(t, fixture(), Inputs{})
+	f.framework = parseFramework("# Framework\n")
+	if s := f.frameworkSummary(All); s.Untagged != 0 || s.Criteria != 0 || strings.Contains(string(f.criteriaDoc(All)), "Provisional") {
+		t.Errorf("with nothing marked, no note is untagged: %+v", s)
+	}
+	check(t, "nothing marked", parseFramework("# Framework\n\n- Code\n").problems,
+		[]string{"no criteria are marked: add {#<id>} to the competencies and expectations to map evidence to"})
+}
+
+func TestCoverage(t *testing.T) {
+	dir := t.TempDir()
+	notes, ctx := filepath.Join(dir, "notes"), filepath.Join(dir, "context")
+	put := func(p, text string) {
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte(text), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	put(filepath.Join(ctx, "framework.md"), testFramework)
+	put(filepath.Join(ctx, "evidence", "mentoring.md"), "---\nwhen: 2024-06-01\nshows: senior-coach\n---\nI mentored a new starter for 3 months.\n")
+	put(filepath.Join(ctx, "evidence", "undated.md"), "---\nshows: code\n---\nno date\n")
+	first := build(t, fixture(), Inputs{})
+	hash := parseFramework(testFramework).hash
+	var sections strings.Builder
+	for _, s := range NoteSections {
+		sections.WriteString("\n## " + s + "\n\nWork.\n")
+	}
+	note := func(id, front string) {
+		put(filepath.Join(notes, itemPath(id)+".md"), "---\nitem: "+id+"\ninputs: "+first.items[id].Pack+"\n"+front+"---\n"+sections.String())
+	}
+	note("ENG-1", "shows: code, senior-coach\nframework: "+hash+"\n")
+	note("ENG-2", "shows: code\nframework: "+hash+"\n")
+	note("repo+app+2024q2", "") // current, and not tagged yet
+	f := build(t, fixture(), Inputs{NotesDir: notes, ContextDir: ctx})
+
+	status := map[string]string{}
+	for _, cc := range f.coverage(All) {
+		status[cc.ID] = fmt.Sprintf("%s %v %v %d %d", cc.Status, cc.Items, cc.Evidence, cc.Reviews, cc.Quarters)
+	}
+	check(t, "coverage", status, map[string]string{
+		"code":             "thin [ENG-1 ENG-2] [] 0 1",
+		"quality":          "thin [] [] 2 1",
+		"senior-coach":     "covered [ENG-1] [evidence+mentoring] 0 2",
+		"senior-process":   "none [] [] 0 0",
+		"lead-streams":     "none [] [] 0 0",
+		"testing@applying": "none [] [] 0 0",
+		"testing@leading":  "none [] [] 0 0",
+	})
+	w, _ := NewWindow("2024-01-01", "2024-03-31")
+	for _, cc := range f.coverage(w) {
+		if cc.ID == "senior-coach" {
+			check(t, "in a window, evidence outside it does not count", []any{cc.Status, cc.Evidence}, []any{CoverageThin, []string{}})
+		}
+	}
+	s := f.Summary(All).Framework
+	check(t, "summary", []any{s.Criteria, s.Tagged, s.Untagged, s.ByStatus, len(s.Problems)},
+		[]any{7, 2, 1, map[string]int{CoverageNone: 4, CoverageThin: 2, CoverageCovered: 1}, 3})
+	check(t, "an item's tags", f.items["ENG-1"].Shows, []string{"code", "senior-coach"})
+	check(t, "tags.txt", string(f.tagsTodo()), "untagged\trepo+app+2024q2\tS\t2024-04-01..2024-05-01\tapp: work naming no issue, 2024Q2\n")
+	doc := string(f.criteriaDoc(All))
+	for _, want := range []string{"## Any level\n", "## senior\n", "| none | `senior-process` Drive process improvements. |  | 0 |",
+		"| covered | `senior-coach` Coach on technical practices. | ENG-1, evidence+mentoring | 2 |", "| thin | `quality`", "2 reviews",
+		"**Provisional:** 1 current notes"} {
+		if !strings.Contains(doc, want) {
+			t.Errorf("criteria.md has no %q:\n%s", want, doc)
+		}
+	}
+
+	var findings []string
+	for _, fd := range f.Check("notes/ENG-1.md", "---\nitem: ENG-1\ninputs: "+f.items["ENG-1"].Pack+"\nshows: code, mentoring\nframework: sha256:old\n---\n"+sections.String()) {
+		findings = append(findings, fd.String())
+	}
+	check(t, "a note's tags checked", findings, []string{
+		"6: warning: tagged against an earlier framework: check its shows: against criteria.md, then set framework: " + hash,
+		"6: error: shows: mentoring is not a criterion of context/framework.md (criteria.md lists them)",
+	})
+	if fd := f.Check("draft.md", "---\nwindow: all\n---\nI mentored a starter for 3 months [[evidence+mentoring]].\n"); len(fd) > 0 {
+		t.Errorf("an evidence file is citable, with its numbers in scope: %v", fd)
+	}
+	if fd := build(t, fixture(), Inputs{NotesDir: notes}).Check("notes/ENG-1.md", "---\nitem: ENG-1\ninputs: x\nshows: code\n---\n"+sections.String()); len(fd) < 2 ||
+		!strings.Contains(fd[1].String(), "marks none") {
+		t.Errorf("tags without a framework: %v", fd)
+	}
+}
+
 func TestDeterministic(t *testing.T) {
+	ctx := t.TempDir()
+	for name, text := range map[string]string{"framework.md": testFramework,
+		filepath.Join("evidence", "talk.md"): "---\nwhen: 2024-02-01\nshows: code\n---\nA talk.\n"} {
+		_ = os.MkdirAll(filepath.Dir(filepath.Join(ctx, name)), 0o755)
+		if err := os.WriteFile(filepath.Join(ctx, name), []byte(text), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
 	write := func(raw *Raw) map[string][]byte {
 		dir := filepath.Join(t.TempDir(), "facts")
 		w, _ := NewWindow("2024-01-01", "2024-03-31")
-		if err := build(t, raw, Inputs{}).Write(dir, w); err != nil {
+		if err := build(t, raw, Inputs{ContextDir: ctx}).Write(dir, w); err != nil {
 			t.Fatal(err)
 		}
 		files := map[string][]byte{}
@@ -687,7 +816,7 @@ func TestDeterministic(t *testing.T) {
 			t.Errorf("%s differs when the input is shuffled", name)
 		}
 	}
-	for _, name := range []string{"README.md", "facts.json", "items.jsonl", "packs/ENG-1.md", "windows/2024-01-01_2024-03-31/overview.md", "catalogue.md", "todo.txt", "reviews.jsonl", "technologies.jsonl"} {
+	for _, name := range []string{"README.md", "facts.json", "items.jsonl", "packs/ENG-1.md", "windows/2024-01-01_2024-03-31/overview.md", "catalogue.md", "todo.txt", "reviews.jsonl", "technologies.jsonl", "criteria.md", "tags.txt", "windows/2024-01-01_2024-03-31/criteria.md"} {
 		if _, ok := a[name]; !ok {
 			t.Errorf("no %s", name)
 		}

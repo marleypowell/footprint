@@ -7,9 +7,10 @@ the window's overview and `facts.json`, the notes of its items, `profile.md`, `f
    them.
 2. **Highlights.** The three to six biggest initiatives and features by the window's active days
    (the overview's tables). For each: what it was, the user's part, the outcome, its citations, and
-   the competency in `framework.md` it shows.
-3. **By competency.** Each competency in `framework.md`, with the evidence for it from the notes, or
-   "nothing in the data" for the user to fill in.
+   the competencies it shows (its `shows` in items.jsonl).
+3. **By competency.** Each criterion in the window's `criteria.md`, with its evidence (the tagged
+   items' notes, the user's evidence files), or "nothing in the data" for a `none` one, for the user
+   to fill in.
 4. **The rest.** Smaller work in aggregate (fixes, the work naming no issue), docs written,
    AI-assisted work (`agent_commits`), and reviewing others' work: `prs_reviewed`,
    `authors_reviewed`, `changes_requested`, with two or three reviews where the user's words show

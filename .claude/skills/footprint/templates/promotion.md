@@ -6,9 +6,10 @@ overview and `facts.json`, and the notes of its items.
 
 1. **The case.** One paragraph: the target level, and the pattern of evidence (scope, impact,
    leadership).
-2. **Per expectation.** For each expectation of the target level in `framework.md`, two to four
-   pieces of evidence: the situation, what the user did, the result, with citations. Say where the
-   evidence is thin.
+2. **Per expectation.** For each criterion of the target level in the window's `criteria.md` (and
+   those of no level), two to four pieces of its evidence: the situation, what the user did, the
+   result, with citations (the items' notes, `[[evidence+<slug>]]`, reviews). Say where it is `thin`
+   or `none`, as criteria.md does.
 3. **Scope.** The initiatives the user drove or planned (an initiative's involvement; issues they
    raised), the repos they started (`repos.jsonl` -> `started_by_me`), the systems they worked across.
 4. **Influence.** Docs written, work raised for others, work done with others (co-authored commits,

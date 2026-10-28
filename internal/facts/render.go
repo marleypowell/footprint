@@ -107,6 +107,18 @@ func (f *Facts) overview(w Window) []byte {
 			p("\n")
 		}
 	}
+	if fw := s.Framework; fw != nil {
+		p("\n## Framework coverage\n\nOf context/framework.md's %d criteria, in this window: %d with no evidence, %d thin, %d covered\n",
+			fw.Criteria, fw.ByStatus[CoverageNone], fw.ByStatus[CoverageThin], fw.ByStatus[CoverageCovered])
+		p("(criteria.md lists them, gaps first).")
+		if fw.Untagged > 0 {
+			p(" Provisional: %d current notes are not tagged yet (tags.txt).", fw.Untagged)
+		}
+		p("\n")
+		if len(fw.Problems) > 0 {
+			p("\n- Problems: %s\n", strings.Join(fw.Problems, "; "))
+		}
+	}
 	if len(s.Technologies) > 0 {
 		p("\n## Technologies\n\nWhat your landed changes were written in or for, by their files' paths (README.md has the\n")
 		p("rules). Significant (✓) means enough use, all time, to name in a CV. Lines are in its files.\n\n")

@@ -51,4 +51,20 @@ others.
 - Name customers and colleagues by role ("a large customer", "the platform team"), and keep secrets
   and credentials out.
 
+## Tagging
+
+A line of `tags.txt` names a current note to tag against the framework. Read the note and the
+criteria in `data/facts/criteria.md`, then add two lines to the note's frontmatter, and change
+nothing else:
+
+```
+shows: code, senior-coach
+framework: <the hash at the top of criteria.md>
+```
+
+- Tag a criterion only when the note's What I did or Outcome shows it, as the criterion's text
+  describes it: that the user worked in the area is not enough.
+- Leave `shows:` empty when the note shows none. Most notes show one to three.
+- A note whose `framework:` is an earlier hash: check its tags against the criteria as they are now.
+
 Done when `bin/footprint check data/notes/<id>.md` shows no errors and no count warnings.

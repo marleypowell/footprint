@@ -47,6 +47,17 @@ Work from the repo root. Build first when `bin/footprint` is missing or older th
    the existing note, when stale) and write `data/notes/<id>.md` by `notes.md`. With more than 15
    lines, give subagents batches of about 15 ids each, with `notes.md`. Then re-run step 1's command.
    Done when the window's `todo.txt` is empty.
+
+   For a review, promotion or pay rise case, also map the notes to the framework:
+   - When `facts.json` -> `framework` is null or its problems say no criteria are marked, propose
+     `{#<id>}` and `{level=<id>}` markers for `framework.md` (`docs/facts-schema.md`, Framework
+     coverage), show them to the user, and add them once they confirm. Never change their wording.
+   - Work down `data/facts/tags.txt` by `notes.md` (Tagging), in batches of about 30 ids per
+     subagent. Then re-run step 1's command. Done when `tags.txt` is empty.
+   - Read the window's `criteria.md`. Tell the user the `none` and `thin` criteria of the level the
+     document is for, and ask for evidence from outside the tools (incidents, mentoring, talks,
+     interviews). Save each answer verbatim as `data/context/evidence/<slug>.md`, with `when:` and
+     `shows:` frontmatter, and re-run step 1's command.
 4. **Draft.** Write `data/drafts/<document>-<window>.md` by the template, from the window's overview
    and `facts.json`, and the notes of its items. Start it with the frontmatter `window: <window>`
    (`all`, or `YYYY-MM-DD..YYYY-MM-DD`) between `---` lines. Cite every claim with `[[id]]`. Done when
