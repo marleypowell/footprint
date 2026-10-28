@@ -34,6 +34,7 @@ issues.jsonl       every issue of the dataset, with the user's involvement and i
 docs.jsonl         every wiki page and decision record (ADR) of the dataset, with the user's share
 repos.jsonl        the repos, with systems, totals and the kinds of file the user changed
 reviews.jsonl      other people's PRs the user reviewed or commented on, by repo and number
+technologies.jsonl the languages, tools and platforms of the user's landed changes, most active days first
 packs/<id>.md      each work item's evidence, bounded, for writing its note
 catalogue.md       every item, oldest first, as standalone text with its note: the record to keep
 todo.txt           the notes to write or fix; empty when there are none
@@ -65,6 +66,7 @@ The raw data's caveats, and what facts does with each:
 | ancestors | Context: they make initiatives and give features their epics, and the user's comments on them count as active days, but they are not the user's issues. |
 | wiki authorship | `share` is the user's versions over all versions. A page is a substantial doc when it has 300 words or more, the user's share is half or more, and they created it or saved 3 versions or more. |
 | ADR authorship | A decision record's versions are the commits that changed its text on the default branch (not a rename or copy that kept it as it was, after the first). A version is the user's when they authored the commit, or an AI agent did in their PR or crediting them; a colleague's commit naming them as co-author is not. `share` and the rule are a page's, from 200 words: a decision record is short by design. Its versions count toward the doc's item; the same commits count toward their changes' items as usual. |
+| technologies | A landed change's technologies come from the paths of its files, excluded files left out, by a compiled-in table: languages by extension (`.ts` TypeScript, `.cs` C#, `.feature` Gherkin), tooling and platforms by the files they read (`Dockerfile` Docker, `.github/workflows/` GitHub Actions, `azure-pipelines*.yml` or `stages/`, `jobs/` and `steps/` of YAML Azure Pipelines, `*.tf` Terraform, `Chart.yaml` or `values*.yaml` Helm, `*.csproj` .NET, `package.json` Node.js, `*.stories.tsx` Storybook). A file can name several (a story is TypeScript and Storybook), or none (Markdown, JSON, images). Co-authored and unlanded changes count toward none. A technology counts a change, and its files' lines, when the change lands; its active days are the user's days on those changes. It is **significant** with 3 active days or more and, for a language, 50 lines added or 3 changes: tools and platforms need the days alone. |
 | reviews | Another person's PR the user reviewed or commented on is a review record (`review+<repo>#<n>`), never the user's change. It counts toward the item of the issue it names that facts trusts (as for a PR), when that item is one of the user's; otherwise toward none: reviews never make items. Its days are the user's active days, but not the item's, so they leave its effort alone. A PR whose author is a bot (by the code host, or by name) counts apart. |
 | time | Every timestamp is parsed (commit dates carry their author's offset) and counted by its UTC day. Windows are whole UTC days, both ends included. |
 
@@ -108,6 +110,7 @@ coverage      sources; first and last day counted; prs_from (the first PR record
 totals        the window's Totals
 by_year, by_quarter   [{period: "2024" | "2024q3", totals}]
 team_signals  [{period: "2024q3", boards, projects, teams}]: each [{name, title, issues}] (below)
+technologies  [{name, category, significant, first, last, totals}]: those with active days in the window, as of the window
 excluded      {generated, bulk}: {files, added, deleted} left out of line counts (all time)
 notes         {required, current, stale, missing, invalid, renamed, optional, orphans}
 ```
@@ -161,13 +164,14 @@ which team the user was on. For each quarter, from the issues the user worked on
 | `first`, `last`, `active_days`, `effort` | its span (anything counted toward it), the user's active days, its size |
 | `totals` | Totals counted toward it (an initiative's include its features') |
 | `subtasks` | a feature's `{total, done_by_me}` |
+| `technologies` | its landed changes' (an initiative's include its features'), most lines first |
 | `issues`, `features`, `changes`, `also_changes`, `docs`, `reviews` | what it holds: its own issue first; changes counted toward it; changes naming it that count toward another item (an ADR's: the changes that wrote it); docs naming it, and ADRs written in its changes; others' PRs naming it that the user reviewed |
 | `pack`, `note` | its pack's input hash, and its note's state |
 
 In a window's items.jsonl, `totals`, `first`, `last` and `active_days` are the window's; `effort` and
 `note` stay the item's.
 
-## changes.jsonl, issues.jsonl, docs.jsonl, repos.jsonl, reviews.jsonl
+## changes.jsonl, issues.jsonl, docs.jsonl, repos.jsonl, reviews.jsonl, technologies.jsonl
 
 - **changes**: `id` (`<repo>#<n>` for a PR, `<repo>@<sha, 12 characters>` for a commit), `kind` (`pr`,
   `migrated-pr`, `commit`), `repo`, `url`, `title`, `state` (`merged`, `open`, `closed`; `landed`,
@@ -175,7 +179,8 @@ In a window's items.jsonl, `totals`, `first`, `last` and `active_days` are the w
   `class` (who wrote it: `self`, `agent`, `colleague`, `bot`; a PR's is whoever wrote most of its
   commits, and it is the user's either way; or `co-authored`), `authors` (a PR's commits by class),
   `lines` (`added`, `deleted`, `files`, and what was excluded), `keys` (trusted, current), `item`,
-  `also_items`, `commits` (the user's own, one per patch).
+  `also_items`, `commits` (the user's own, one per patch), `technologies` (a landed change's, most
+  lines first).
 - **issues**: `key`, `previous_keys`, `title`, `url`, `project`, `type`, `level`, `status`,
   `status_category`, `roles` (as collected), `involvement`, `done_by_me`, `created_at`,
   `resolved_at`, `parent`, `item`, `initiative`, `changes` (the user's changes naming it).
@@ -188,13 +193,19 @@ In a window's items.jsonl, `totals`, `first`, `last` and `active_days` are the w
 - **repos**: `name`, `url`, `description`, `archived`, `systems`, `domains` (from the catalog),
   `first`, `last`, `started_by_me` (the user made its first commit), `totals`, `extensions` (`{ext,
   files, added}` of the files the user's landed changes touched, most lines first), `items` (most of
-  the user's days in it first). A repo the user only reviewed in has review totals alone.
+  the user's days in it first), `technologies` (its landed changes', most lines first). A repo the
+  user only reviewed in has review totals alone.
 - **reviews**: `ref` (`review+<repo>#<n>`, as drafts cite it), `repo`, `number`, `url`, `title`,
   `author` and `author_class` (`colleague`, `agent` or `bot`), `state` (the PR's: `merged`, `closed`,
   `open`), `keys` (trusted, current), `item` (`""` when it names none of the user's), `first`, `last`
   (the user's reviews and comments on it), `reviews` (the user's, by state: `approved`,
   `changes_requested`, `commented`, `dismissed`), `comments`, `words` (in the user's review bodies
   and comments).
+- **technologies**: `name`, `category` (`language`, `tooling` or `platform`), `significant`, `first`,
+  `last` (the user's active days on changes touching it), `totals` (`changes` landed,
+  `agent_changes` among them that an AI agent wrote most of, `lines_added`, `lines_deleted` in its
+  files, distinct `files`, `active_days`, `repos`), `by_year` (`[{period, totals}]`), `repos` and
+  `items` (most of the user's days with it first, 10 at most).
 
 ## Packs and notes
 
@@ -249,7 +260,10 @@ sha), a doc (`doc+<id>`, `adr+<repo>+<name>`), or a review of another person's P
   followed by what it counts is a count: TypeScript 1,200 lines) that matches no fact in
   scope, within 10% when written as an approximation ("about 300", "1.2k", a round number). In scope
   are the window's totals, the totals of a year or quarter the paragraph names, the numbers of the
-  records the paragraph cites, and every number in the user's context files. Percentages and
+  records the paragraph cites, and every number in the user's context files. A paragraph naming a
+  technology (by its name or an alias: TS, Golang, K8s) brings its totals for the window, and for
+  the years and quarters the paragraph names, into scope for a number followed by what they measure
+  (lines, changes, files, days, repos): "TypeScript, 1,200 lines across 3 repos". Percentages and
   multiples are derived: they pass only as the user's own figures. A link to the code host, tracker
   or wiki that is not in the dataset, and a key of a real project that is not, are warnings too (the
   dataset leaves out issues the user only commented on).

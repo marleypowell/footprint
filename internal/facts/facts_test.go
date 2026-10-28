@@ -606,6 +606,47 @@ func TestReviews(t *testing.T) {
 	check(t, "not collected, before", build(t, raw, Inputs{}).Summary(All).Coverage.NotCollected[0], notCollected[0])
 }
 
+func TestTechnologies(t *testing.T) {
+	raw := fixture()
+	raw.Commits = append(raw.Commits,
+		commit("c20", "2024-06-01T10:00:00Z", jane, []string{"author", "committer"}, "ship it", func(c *collect.Commit) {
+			c.Files = []collect.FileChange{file("Dockerfile", 5, 0), file("web/card.stories.tsx", 40, 1), file("README.md", 3, 0)}
+		}),
+		commit("c21", "2024-06-02T10:00:00Z", other, []string{"co-author"}, "theirs\n\nCo-authored-by: Jane Doe <jane@example.com>",
+			func(c *collect.Commit) { c.Files = []collect.FileChange{file("web/x.rs", 500, 0)} }),
+	)
+	f := build(t, raw, Inputs{})
+	var names []string
+	for _, tc := range f.Technologies {
+		names = append(names, tc.Name)
+	}
+	check(t, "technologies, most days first; co-authored and excluded files left out", names, []string{"Go", "Storybook", "TypeScript", "Docker"})
+	g := f.technologies["Go"]
+	check(t, "Go", []any{g.Category, g.Significant, g.First, g.Last, g.Totals, g.Repos, g.Items},
+		[]any{"language", true, "2024-01-02", "2024-02-01",
+			TechTotals{Changes: 3, LinesAdded: 60, LinesDeleted: 7, Files: 3, ActiveDays: 4, Repos: 1}, []string{"app"}, []string{"ENG-1", "ENG-2"}})
+	check(t, "Go by year", g.ByYear, []TechPeriod{{Period: "2024", Totals: g.Totals}})
+	check(t, "a tool used on one day is not significant", f.technologies["Docker"].Significant, false)
+	check(t, "a change's technologies, most lines first", f.changes["app@c20"].Technologies, []string{"Storybook", "TypeScript", "Docker"})
+	check(t, "an unlanded change has none", f.changes["app@c11"].Technologies, []string{})
+	check(t, "an item's", f.items["ENG-1"].Technologies, []string{"Go"})
+	check(t, "a repo's", f.Repos[0].Technologies, []string{"Go", "Storybook", "TypeScript", "Docker"})
+
+	w, _ := NewWindow("2024-01-01", "2024-01-31")
+	check(t, "a window's", f.Summary(w).Technologies, []TechSummary{{Name: "Go", Category: "language", Significant: true,
+		First: "2024-01-02", Last: "2024-01-04", Totals: TechTotals{Changes: 2, LinesAdded: 40, LinesDeleted: 7, Files: 2, ActiveDays: 3, Repos: 1}}})
+
+	draft := "---\nwindow: all\n---\nTypeScript: 40 lines.\n\nRust: 40 lines.\n\nTypeScript, with 40 people.\n\nGo in 2024: 60 lines.\n"
+	var findings []string
+	for _, fd := range f.Check("draft.md", draft) {
+		findings = append(findings, fd.String())
+	}
+	check(t, "a technology's numbers, for what they measure", len(findings), 2)
+	if len(findings) == 2 && (!strings.Contains(findings[0], "Rust: 40 lines") || !strings.Contains(findings[1], "40 people")) {
+		t.Errorf("findings: %v", findings)
+	}
+}
+
 func TestDeterministic(t *testing.T) {
 	write := func(raw *Raw) map[string][]byte {
 		dir := filepath.Join(t.TempDir(), "facts")
@@ -646,7 +687,7 @@ func TestDeterministic(t *testing.T) {
 			t.Errorf("%s differs when the input is shuffled", name)
 		}
 	}
-	for _, name := range []string{"README.md", "facts.json", "items.jsonl", "packs/ENG-1.md", "windows/2024-01-01_2024-03-31/overview.md", "catalogue.md", "todo.txt", "reviews.jsonl"} {
+	for _, name := range []string{"README.md", "facts.json", "items.jsonl", "packs/ENG-1.md", "windows/2024-01-01_2024-03-31/overview.md", "catalogue.md", "todo.txt", "reviews.jsonl", "technologies.jsonl"} {
 		if _, ok := a[name]; !ok {
 			t.Errorf("no %s", name)
 		}

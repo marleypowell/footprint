@@ -24,8 +24,10 @@ type Summary struct {
 	ByYear      []Period      `json:"by_year"`
 	ByQuarter   []Period      `json:"by_quarter"`
 	TeamSignals []TeamSignals `json:"team_signals"`
-	Excluded    Excluded      `json:"excluded"`
-	Notes       NoteCounts    `json:"notes"`
+	// Technologies are those with the user's activity in the window, as of the window
+	Technologies []TechSummary `json:"technologies"`
+	Excluded     Excluded      `json:"excluded"`
+	Notes        NoteCounts    `json:"notes"`
 }
 
 // Coverage says what the dataset can and cannot show.
@@ -74,6 +76,7 @@ func (f *Facts) Summary(w Window) Summary {
 	s := Summary{PackVersion: PackVersion, Window: w.String(), Totals: totalsOf(f.events, w), Excluded: f.Excluded}
 	s.ByYear, s.ByQuarter = periods(f.events, w)
 	s.TeamSignals = f.teamSignals(w)
+	s.Technologies = f.techSummaries(w)
 	s.Coverage = Coverage{Sources: f.raw.Index.Sources, NotCollected: f.notCollected()}
 	s.Coverage.First, s.Coverage.Last = span(f.events, w)
 	for _, pr := range f.raw.PRs {
@@ -158,6 +161,7 @@ func (f *Facts) Write(dir string, windows ...Window) error {
 	put("docs.jsonl")(jsonl(f.Docs))
 	put("repos.jsonl")(jsonl(f.Repos))
 	put("reviews.jsonl")(jsonl(f.Reviews))
+	put("technologies.jsonl")(jsonl(f.Technologies))
 	files["overview.md"] = f.overview(All)
 	files["catalogue.md"] = f.catalogue()
 	files["todo.txt"] = f.todo(All)

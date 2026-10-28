@@ -22,7 +22,9 @@ type Repo struct {
 	StartedByMe bool        `json:"started_by_me"` // the user made its first commit
 	Totals      Totals      `json:"totals"`
 	Extensions  []Extension `json:"extensions"` // of the files the user's landed changes touched, most lines added first
-	Items       []string    `json:"items"`      // the items with most of the user's days in it
+	// Technologies are its landed changes', most lines first
+	Technologies []string `json:"technologies"`
+	Items        []string `json:"items"` // the items with most of the user's days in it
 }
 
 // Extension is a kind of file the user changed, by extension (or name, for files without one).
@@ -87,6 +89,13 @@ func (f *Facts) buildRepos() {
 		}
 		r.Systems, r.Domains = sortedSet(systems), sortedSet(domains)
 		r.Extensions = f.extensions(p.Name)
+		var ids []string
+		for _, c := range f.Changes {
+			if c.Repo == p.Name {
+				ids = append(ids, c.ID)
+			}
+		}
+		r.Technologies = f.techsOf(ids)
 		r.Items = f.repoItems(evs)
 		f.Repos = append(f.Repos, r)
 	}

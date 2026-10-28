@@ -24,8 +24,8 @@ What shipped and what it changed, as the sources state it ("released to all tena
 the old receiver"). When they say nothing of impact, write "Not in the data." and ask below.
 
 ## Skills
-Technologies and practices the evidence shows: languages from the paths, services, protocols,
-methods.
+Technologies and practices the evidence shows: the item's `technologies` in items.jsonl, and the
+services, protocols and methods the pack names.
 
 ## Evidence
 The [[id]]s that carry the claims above, most telling first.

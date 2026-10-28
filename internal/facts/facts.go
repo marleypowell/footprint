@@ -16,33 +16,36 @@ import (
 
 // Facts is everything Build decides about one dataset.
 type Facts struct {
-	Changes  []*Change // by time, then id
-	Issues   []*Issue  // by key (natural order)
-	Items    []*Item   // by first activity, then id
-	Docs     []*Doc    // by creation, then id
-	Reviews  []*Review // by repo, then number
-	Repos    []*Repo   // by name
-	Excluded Excluded  // what line counts leave out
+	Changes []*Change // by time, then id
+	Issues  []*Issue  // by key (natural order)
+	Items   []*Item   // by first activity, then id
+	Docs    []*Doc    // by creation, then id
+	Reviews []*Review // by repo, then number
+	// Technologies are by the user's active days with them, then lines added, then name
+	Technologies []*Technology
+	Repos        []*Repo  // by name
+	Excluded     Excluded // what line counts leave out
 
-	raw         *Raw
-	people      *people
-	userID      string             // the user's account in the issue tracker, from their marked activity
-	keyOf       map[string]string  // every key an issue answers to (upper case) -> its current key
-	issues      map[string]*Issue  // by current key
-	items       map[string]*Item   // by id
-	changes     map[string]*Change // by id
-	changeOf    map[string]string  // repo@sha of a commit of the user's -> the change it is part of
-	docs        map[string]*Doc    // by page id
-	reviews     map[string]*Review // by ref
-	events      []event
-	notes       map[string]*noteFile // by file name (the item id, path-encoded), read from the notes directory
-	orphans     []string             // notes naming no item
-	subjects    map[string]string    // repo@sha -> commit subject
-	hosts       map[string]bool      // the hosts of the dataset's links, for check
-	urls        map[string]bool
-	projectKeys map[string]bool
-	context     map[string]string // the user's own words per item id, from context/items/<id>.md
-	contexts    []string          // every context file's text, for numbers the user stated
+	raw          *Raw
+	people       *people
+	userID       string             // the user's account in the issue tracker, from their marked activity
+	keyOf        map[string]string  // every key an issue answers to (upper case) -> its current key
+	issues       map[string]*Issue  // by current key
+	items        map[string]*Item   // by id
+	changes      map[string]*Change // by id
+	changeOf     map[string]string  // repo@sha of a commit of the user's -> the change it is part of
+	docs         map[string]*Doc    // by page id
+	reviews      map[string]*Review // by ref
+	technologies map[string]*Technology
+	events       []event
+	notes        map[string]*noteFile // by file name (the item id, path-encoded), read from the notes directory
+	orphans      []string             // notes naming no item
+	subjects     map[string]string    // repo@sha -> commit subject
+	hosts        map[string]bool      // the hosts of the dataset's links, for check
+	urls         map[string]bool
+	projectKeys  map[string]bool
+	context      map[string]string // the user's own words per item id, from context/items/<id>.md
+	contexts     []string          // every context file's text, for numbers the user stated
 }
 
 // Ref names another record: an item, issue or page.
@@ -72,6 +75,7 @@ func Build(raw *Raw, in Inputs) (*Facts, error) {
 	f.buildChanges()
 	f.buildDocs()
 	f.buildItems()
+	f.buildTechnologies()
 	f.buildRepos()
 	if f.notes, err = readNotes(in.NotesDir); err != nil {
 		return nil, err

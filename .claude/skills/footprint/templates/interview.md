@@ -26,7 +26,8 @@ role, and no credentials, internal hostnames, security details or unreleased pla
 4. **Deep dives.** For a technical, system design or hiring manager stage: two or three systems
    the user can walk through, from the notes and the docs they wrote: what each does, how it is
    built, the trade-offs taken, and what they would change. Skip this section for other stages.
-5. **Gaps.** The role's requirements with thin or no evidence, each with the nearest adjacent work
+5. **Gaps.** The role's requirements (its stack against `technologies.jsonl`: absent, or not
+   significant) with thin or no evidence, each with the nearest adjacent work
    the user can speak to, cited.
 6. **Numbers.** The few totals worth saying aloud, each with its facts.json name.
 7. **Questions to ask them.** Drawn from the role description and the stage: the team, the work,

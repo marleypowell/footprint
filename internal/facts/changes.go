@@ -35,12 +35,16 @@ type Change struct {
 	Item      string   `json:"item"`
 	AlsoItems []string `json:"also_items"` // the items of its other keys
 	Commits   []string `json:"commits"`    // the user's own commits in it, one per patch
+	// Technologies are a landed change's, by its files' paths, most lines first
+	Technologies []string `json:"technologies"`
 
-	at    time.Time // when it counts (At)
-	start time.Time // when the work began: a PR's opening, a commit's authoring
-	body  string
-	files []fileChange
-	evs   []event
+	techs    []techUse
+	techDays []string
+	at       time.Time // when it counts (At)
+	start    time.Time // when the work began: a PR's opening, a commit's authoring
+	body     string
+	files    []fileChange
+	evs      []event
 }
 
 // Authors counts a PR's commits by who wrote them.

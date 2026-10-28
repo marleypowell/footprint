@@ -107,6 +107,19 @@ func (f *Facts) overview(w Window) []byte {
 			p("\n")
 		}
 	}
+	if len(s.Technologies) > 0 {
+		p("\n## Technologies\n\nWhat your landed changes were written in or for, by their files' paths (README.md has the\n")
+		p("rules). Significant (✓) means enough use, all time, to name in a CV. Lines are in its files.\n\n")
+		p("| technology | category | | first..last | `active_days` | `changes` | `lines_added` | `repos` |\n|---|---|---|---|--:|--:|--:|--:|\n")
+		for _, t := range s.Technologies {
+			mark := ""
+			if t.Significant {
+				mark = "✓"
+			}
+			p("| %s | %s | %s | %s..%s | %d | %d | %d | %d |\n", t.Name, t.Category, mark, t.First, t.Last, t.Totals.ActiveDays,
+				t.Totals.Changes, t.Totals.LinesAdded, t.Totals.Repos)
+		}
+	}
 	if len(s.TeamSignals) > 0 {
 		p("\n## Team signals\n\nBy quarter, where the issues you worked on or finished were then: the boards whose sprints held\n")
 		p("them, their projects, and their team field; with the issues in each. Hints for profile.md, not facts.\n\n")

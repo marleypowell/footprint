@@ -222,6 +222,7 @@ func (c *checker) walk(body string) {
 
 func (c *checker) paragraph(lines []string, idx []int) {
 	local := map[int]bool{}
+	techWindows := []Window{c.window} // the window, and the periods the paragraph names
 	type pending struct {
 		line int
 		text string
@@ -236,7 +237,7 @@ func (c *checker) paragraph(lines []string, idx []int) {
 			id, url := c.f.resolve(ref)
 			switch {
 			case id == "":
-				c.add(i+1, true, "[[%s]] names nothing in the dataset (an item, issue key, repo#PR, repo@sha, doc+id or adr+repo+name)", ref)
+				c.add(i+1, true, "[[%s]] names nothing in the dataset (an item, issue key, repo#PR, repo@sha, doc+id, adr+repo+name or review+repo#PR)", ref)
 			case c.allowed != nil && !c.allowed[id]:
 				c.add(i+1, true, "[[%s]] is not part of %s's evidence: a note cites only its own item's records", ref, c.note.ID)
 			default:
@@ -270,10 +271,26 @@ func (c *checker) paragraph(lines []string, idx []int) {
 				for _, v := range t.values() {
 					local[v] = true
 				}
+				y, _ := strconv.Atoi(name[:4])
+				pw := yearWindow(y)
+				if len(name) == 6 {
+					pw = quarterWindow(y, int(name[5]-'0'))
+				}
+				techWindows = append(techWindows, intersect(pw, c.window))
 			}
 		}
 		rest = notCountRE.ReplaceAllString(rest, " ")
 		numbers = append(numbers, pending{i, rest})
+	}
+	techLocal := map[int]bool{} // a named technology's numbers: in scope for what they measure only
+	if c.note == nil {
+		var text strings.Builder
+		for _, i := range idx {
+			text.WriteString(lines[i] + "\n")
+		}
+		for _, v := range c.f.techValues(text.String(), techWindows) {
+			techLocal[v] = true
+		}
 	}
 	for ni, n := range numbers {
 		prev := "" // the line before, whose end says whether this one starts a sentence
@@ -315,7 +332,8 @@ func (c *checker) paragraph(lines []string, idx []int) {
 			case (suffix == "%" || suffix == "x" || suffix == "×") && !c.values[int(math.Round(v))]:
 				c.add(n.line+1, false, "%q is derived: write the numbers it comes from (120 of 300 commits), or the user's own figure "+
 					"from context/. In %q", got, original[n.line])
-			case !c.matches(v, suffix, approx, local):
+			case !c.matches(v, suffix, approx, local) &&
+				!(techUnitRE.MatchString(strings.TrimLeft(n.text[end:], " ")) && c.matches(v, suffix, approx, techLocal)):
 				c.add(n.line+1, false, "%q matches no fact in scope (window %s): take it from facts.json or a cited record, "+
 					"or the user's own words in context/; a name or version (Angular 15) is fine. In %q", got, c.window, original[n.line])
 			}
@@ -326,6 +344,8 @@ func (c *checker) paragraph(lines []string, idx []int) {
 var (
 	versionWords = map[string]bool{"version": true, "release": true, "level": true, "phase": true, "sprint": true, "tier": true}
 	listMarkerRE = regexp.MustCompile(`^([-*+>]|\d+[.)])$`)
+	// what a technology's numbers measure: "TypeScript, in 1,200 lines across 3 repos"
+	techUnitRE = regexp.MustCompile(`^(lines|changes|files|days|active days|repos|repositories|PRs)\b`)
 	// what a number counts, whatever precedes it: "rebuilt Storybook 12 times", "TypeScript 1,200 lines"
 	countUnitRE = regexp.MustCompile(`^(times|days|weeks|months|years|hours|minutes|people|engineers|developers|teammates|PRs|commits|tickets|repos|` +
 		`lines|changes|files|issues|stories|bugs|epics|pages|docs|ADRs|items|words)\b`)

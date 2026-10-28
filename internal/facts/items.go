@@ -65,8 +65,10 @@ type Item struct {
 	AlsoChanges []string  `json:"also_changes"` // changes naming it that count toward another item; an ADR's, the changes that wrote it
 	Docs        []string  `json:"docs"`         // docs naming it, and ADRs written in its changes
 	Reviews     []string  `json:"reviews"`      // others' PRs naming it that the user reviewed
-	Pack        string    `json:"pack"`         // the input hash of packs/<id>.md
-	Note        string    `json:"note"`         // current, stale, missing, invalid, or optional (not required, none yet)
+	// Technologies are its landed changes' (and an initiative's features'), most lines first
+	Technologies []string `json:"technologies"`
+	Pack         string   `json:"pack"` // the input hash of packs/<id>.md
+	Note         string   `json:"note"` // current, stale, missing, invalid, or optional (not required, none yet)
 
 	own    *Issue
 	pack   *packInput
