@@ -33,6 +33,7 @@ changes.jsonl      the code changes, deduplicated, by when they count
 issues.jsonl       every issue of the dataset, with the user's involvement and its item
 docs.jsonl         every wiki page and decision record (ADR) of the dataset, with the user's share
 repos.jsonl        the repos, with systems, totals and the kinds of file the user changed
+reviews.jsonl      other people's PRs the user reviewed or commented on, by repo and number
 packs/<id>.md      each work item's evidence, bounded, for writing its note
 catalogue.md       every item, oldest first, as standalone text with its note: the record to keep
 todo.txt           the notes to write or fix; empty when there are none
@@ -64,6 +65,7 @@ The raw data's caveats, and what facts does with each:
 | ancestors | Context: they make initiatives and give features their epics, and the user's comments on them count as active days, but they are not the user's issues. |
 | wiki authorship | `share` is the user's versions over all versions. A page is a substantial doc when it has 300 words or more, the user's share is half or more, and they created it or saved 3 versions or more. |
 | ADR authorship | A decision record's versions are the commits that changed its text on the default branch (not a rename or copy that kept it as it was, after the first). A version is the user's when they authored the commit, or an AI agent did in their PR or crediting them; a colleague's commit naming them as co-author is not. `share` and the rule are a page's, from 200 words: a decision record is short by design. Its versions count toward the doc's item; the same commits count toward their changes' items as usual. |
+| reviews | Another person's PR the user reviewed or commented on is a review record (`review+<repo>#<n>`), never the user's change. It counts toward the item of the issue it names that facts trusts (as for a PR), when that item is one of the user's; otherwise toward none: reviews never make items. Its days are the user's active days, but not the item's, so they leave its effort alone. A PR whose author is a bot (by the code host, or by name) counts apart. |
 | time | Every timestamp is parsed (commit dates carry their author's offset) and counted by its UTC day. Windows are whole UTC days, both ends included. |
 
 ## Work items
@@ -130,6 +132,11 @@ Totals, each counting events in the window:
 | `pages_created`, `pages_edited` | wiki content the user created; distinct pages they saved a version of |
 | `docs_written` | distinct substantial docs (wiki pages and ADRs) the user saved a version of |
 | `adrs_written` | those of them that are decision records |
+| `prs_reviewed` | distinct PRs by other people (not bots) the user submitted a review of: approved, requested changes, commented, or a review since dismissed |
+| `changes_requested` | the user's reviews requesting changes |
+| `review_comments` | the user's comments on others' PRs: on lines of the diff, and on the conversation |
+| `authors_reviewed` | distinct authors of the PRs in `prs_reviewed` |
+| `bot_prs_reviewed` | distinct bots' PRs the user submitted a review of |
 | `items` | distinct work items with anything counted toward them |
 
 **Team signals** are hints for `profile.md`, not facts: the data records where issues were, not
@@ -154,13 +161,13 @@ which team the user was on. For each quarter, from the issues the user worked on
 | `first`, `last`, `active_days`, `effort` | its span (anything counted toward it), the user's active days, its size |
 | `totals` | Totals counted toward it (an initiative's include its features') |
 | `subtasks` | a feature's `{total, done_by_me}` |
-| `issues`, `features`, `changes`, `also_changes`, `docs` | what it holds: its own issue first; changes counted toward it; changes naming it that count toward another item (an ADR's: the changes that wrote it); docs naming it, and ADRs written in its changes |
+| `issues`, `features`, `changes`, `also_changes`, `docs`, `reviews` | what it holds: its own issue first; changes counted toward it; changes naming it that count toward another item (an ADR's: the changes that wrote it); docs naming it, and ADRs written in its changes; others' PRs naming it that the user reviewed |
 | `pack`, `note` | its pack's input hash, and its note's state |
 
 In a window's items.jsonl, `totals`, `first`, `last` and `active_days` are the window's; `effort` and
 `note` stay the item's.
 
-## changes.jsonl, issues.jsonl, docs.jsonl, repos.jsonl
+## changes.jsonl, issues.jsonl, docs.jsonl, repos.jsonl, reviews.jsonl
 
 - **changes**: `id` (`<repo>#<n>` for a PR, `<repo>@<sha, 12 characters>` for a commit), `kind` (`pr`,
   `migrated-pr`, `commit`), `repo`, `url`, `title`, `state` (`merged`, `open`, `closed`; `landed`,
@@ -181,14 +188,21 @@ In a window's items.jsonl, `totals`, `first`, `last` and `active_days` are the w
 - **repos**: `name`, `url`, `description`, `archived`, `systems`, `domains` (from the catalog),
   `first`, `last`, `started_by_me` (the user made its first commit), `totals`, `extensions` (`{ext,
   files, added}` of the files the user's landed changes touched, most lines first), `items` (most of
-  the user's days in it first).
+  the user's days in it first). A repo the user only reviewed in has review totals alone.
+- **reviews**: `ref` (`review+<repo>#<n>`, as drafts cite it), `repo`, `number`, `url`, `title`,
+  `author` and `author_class` (`colleague`, `agent` or `bot`), `state` (the PR's: `merged`, `closed`,
+  `open`), `keys` (trusted, current), `item` (`""` when it names none of the user's), `first`, `last`
+  (the user's reviews and comments on it), `reviews` (the user's, by state: `approved`,
+  `changes_requested`, `commented`, `dismissed`), `comments`, `words` (in the user's review bodies
+  and comments).
 
 ## Packs and notes
 
 `packs/<id>.md` holds an item's evidence and nothing that changes without the user's work changing:
 its issue's description, the issues in it, the user's own comments, its changes (the largest, when
 there are many), the larger changes' descriptions, the user's commit messages, where the changes
-were, the docs naming it or written in its changes, a doc's text (an ADR's with the changes that
+were, the docs naming it or written in its changes, the user's reviews of others' PRs naming it (what
+they did and their words, the wordiest 10; left out of packs that have none), a doc's text (an ADR's with the changes that
 wrote it, and who wrote each when not the user: a squash commit carries the PR author's name), and the user's corrections from `context/items/<id>.md`.
 Every cut is marked `… [+N]`; a pack stays under 16 KiB. Its **input hash** (`pack` in items.jsonl)
 is the SHA-256 of those inputs and `pack_version`, so a change to how packs are drawn does not make
@@ -221,7 +235,8 @@ first..last, title` for every required item not current and every invalid note, 
 
 A note or draft cites records as `[[id]]` or `[[id|label]]`, where id is a work item, an issue key
 (any the dataset has, old keys included), a change (`repo#123`, `repo@` and 7 or more characters of a
-sha), or a doc (`doc+<id>`, `adr+<repo>+<name>`). A draft's frontmatter names its window: `window: all` or
+sha), a doc (`doc+<id>`, `adr+<repo>+<name>`), or a review of another person's PR
+(`review+<repo>#<n>`; `-links` makes it the PR's link). A draft's frontmatter names its window: `window: all` or
 `window: YYYY-MM-DD..YYYY-MM-DD`.
 
 `footprint check <file>...`:
@@ -243,7 +258,8 @@ sha), or a doc (`doc+<id>`, `adr+<repo>+<name>`). A draft's frontmatter names it
 
 ## What the facts cannot say
 
-They count what the tools recorded. Reviews of other people's PRs, PR comments, the descriptions of
+They count what the tools recorded. The user's replies to reviews on their own PRs, reviews on the
+host repos were migrated from (and before the reviews stage ran, every review), the descriptions of
 migrated PRs, issues the user only commented on, comments on others' pages, and everything outside
 the tools (design talks, incidents, interviews, mentoring) were not collected: their absence is not
 evidence. Impact (customers, revenue, reliability) is in the data only as far as descriptions and

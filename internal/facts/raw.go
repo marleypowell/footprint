@@ -18,8 +18,10 @@ type Raw struct {
 	Projects      []collect.Project // one per repo in the index, in its order
 	Commits       []collect.Commit  // every repo's, in index order then file order
 	PRs           []collect.PullRequestRecord
-	Decisions     []collect.Decision    // decision records in the repos, by repo in index order
-	Issues        []collect.IssueRecord // ancestors included
+	Reviews       []collect.ReviewRecord // other people's PRs the user reviewed, by repo in index order
+	ReviewsRan    bool                   // the reviews stage ran (org/reviews.json), so no reviews means none
+	Decisions     []collect.Decision     // decision records in the repos, by repo in index order
+	Issues        []collect.IssueRecord  // ancestors included
 	Unresolved    []collect.UnresolvedKey
 	Pages         []collect.PageRecord
 	IssueProjects []tracker.Project // the tracker's projects; empty without an issue tracker
@@ -55,6 +57,11 @@ func Load(dir string) (*Raw, error) {
 		if err != nil {
 			return nil, err
 		}
+		reviews, err := readJSONL[collect.ReviewRecord](dir, repo.Files["reviews"])
+		if err != nil {
+			return nil, err
+		}
+		raw.Reviews = append(raw.Reviews, reviews...)
 		raw.Commits, raw.PRs, raw.Decisions = append(raw.Commits, commits...), append(raw.PRs, prs...), append(raw.Decisions, decisions...)
 	}
 	for _, g := range raw.Index.IssuesByProject {
@@ -77,6 +84,12 @@ func Load(dir string) (*Raw, error) {
 	if _, err := readJSON(filepath.Join(dir, "org", "issue_projects.json"), &raw.IssueProjects); err != nil {
 		return nil, err
 	}
+	var summary collect.ReviewsSummary
+	ok, err := readJSON(filepath.Join(dir, "org", "reviews.json"), &summary)
+	if err != nil {
+		return nil, err
+	}
+	raw.ReviewsRan = ok
 	return raw, nil
 }
 

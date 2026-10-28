@@ -30,12 +30,17 @@ var metrics = []struct{ name, label string }{
 	{"pages_edited", "Wiki pages edited"},
 	{"docs_written", "Substantial docs written"},
 	{"adrs_written", "Decision records (ADRs) among them"},
+	{"prs_reviewed", "Others' PRs you reviewed (not bots')"},
+	{"changes_requested", "Your reviews requesting changes"},
+	{"review_comments", "Your comments on others' PRs"},
+	{"authors_reviewed", "People whose PRs you reviewed"},
+	{"bot_prs_reviewed", "Bots' PRs you reviewed"},
 	{"items", "Work items"},
 	{"active_days", "Active days"},
 }
 
 // yearColumns are the totals the by-year and by-quarter tables show.
-var yearColumns = []string{"changes_landed", "prs_merged", "migrated_prs_merged", "commits", "issues_done", "docs_written", "active_days"}
+var yearColumns = []string{"changes_landed", "prs_merged", "migrated_prs_merged", "commits", "prs_reviewed", "issues_done", "docs_written", "active_days"}
 
 // values are a Totals by name.
 func (t Totals) values() map[string]int {
@@ -76,7 +81,7 @@ func (f *Facts) overview(w Window) []byte {
 	ex := s.Excluded
 	p("- Line counts leave out generated files (%d file changes, +%d -%d) and single file changes of more\n", ex.Generated.Files, ex.Generated.Added, ex.Generated.Deleted)
 	p("  than %d lines (%d, +%d -%d), all time.\n", filekind.BulkLines, ex.Bulk.Files, ex.Bulk.Added, ex.Bulk.Deleted)
-	p("- Not collected, so their absence here says nothing: %s.\n\n", strings.Join(notCollected, "; "))
+	p("- Not collected, so their absence here says nothing: %s.\n\n", strings.Join(f.notCollected(), "; "))
 
 	p("## Totals\n\n| | | name |\n|---|--:|---|\n")
 	values := s.Totals.values()

@@ -127,7 +127,7 @@ func (f *Facts) evidence(it *Item) map[string]bool {
 	if it.Initiative != nil {
 		set[it.Initiative.ID] = true
 	}
-	lists := [][]string{it.Issues, it.Features, it.Changes, it.AlsoChanges, it.Docs}
+	lists := [][]string{it.Issues, it.Features, it.Changes, it.AlsoChanges, it.Docs, it.Reviews}
 	if it.doc != nil {
 		lists = append(lists, it.doc.Items) // what a doc names, or an ADR was written for
 	}
@@ -181,6 +181,10 @@ func (c *checker) itemValues(id string) []int {
 	}
 	if d := c.f.docByRef(id); d != nil {
 		vals = append(vals, d.Words, d.Versions, d.MyVersions, d.Share)
+	}
+	if r := c.f.reviews[id]; r != nil {
+		rs := r.Reviews
+		vals = append(vals, rs.Approved+rs.ChangesRequested+rs.Commented+rs.Dismissed, rs.ChangesRequested, r.Comments, r.Words)
 	}
 	return vals
 }
@@ -423,6 +427,9 @@ func (f *Facts) resolve(ref string) (id, link string) {
 	if d := f.docByRef(ref); d != nil {
 		return d.Ref, d.URL
 	}
+	if r := f.reviews[ref]; r != nil {
+		return r.Ref, r.URL
+	}
 	return "", ""
 }
 
@@ -488,6 +495,9 @@ func (f *Facts) urlSets() (hosts, urls map[string]bool) {
 		add(d.URL)
 	}
 	for _, r := range f.Repos {
+		add(r.URL)
+	}
+	for _, r := range f.Reviews {
 		add(r.URL)
 	}
 	return f.hosts, f.urls

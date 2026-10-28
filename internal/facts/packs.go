@@ -29,6 +29,7 @@ const (
 	maxPaths       = 12
 	maxFromUser    = 4000
 	maxDocBody     = 10000
+	maxReviews     = 10
 )
 
 // packInput is everything a pack shows, and nothing that changes without the user's work changing
@@ -59,6 +60,20 @@ type packInput struct {
 	Doc         *packDoc     `json:"doc"`
 	FromUser    string       `json:"from_user"`
 	Omitted     packOmitted  `json:"omitted"`
+	// others' PRs naming it that the user reviewed; left out when none, so that packs without
+	// reviews keep their hash
+	Reviews []packReview `json:"reviews,omitempty"`
+}
+
+// packReview is the user's review of another person's PR: what they did on it, and their words.
+type packReview struct {
+	Ref    string `json:"ref"`
+	Day    string `json:"day"`
+	Author string `json:"author"` // the author's class: colleague, agent or bot
+	Did    string `json:"did"`    // "approved, changes requested; 2 comments"
+	Title  string `json:"title"`
+	Text   string `json:"text"`
+	words  int
 }
 
 type packIssue struct {
@@ -118,6 +133,7 @@ type packOmitted struct {
 	Comments int `json:"comments"`
 	Changes  int `json:"changes"`
 	Subjects int `json:"subjects"`
+	Reviews  int `json:"reviews,omitempty"`
 }
 
 var (
@@ -213,6 +229,24 @@ func (f *Facts) packInput(it *Item) *packInput {
 		in.Omitted.Comments, comments = len(comments)-maxComments, comments[:maxComments]
 	}
 	in.Comments = append(in.Comments, comments...)
+
+	// The user's reviews of others' PRs naming it: the wordiest, by day.
+	var reviews []packReview
+	for _, ref := range it.Reviews {
+		r := f.reviews[ref]
+		var texts []string
+		for _, t := range r.texts {
+			texts = append(texts, t.Text)
+		}
+		reviews = append(reviews, packReview{Ref: r.Ref, Day: r.First, Author: r.AuthorClass, Did: r.did(), Title: oneLine(r.Title),
+			Text: clip(strings.Join(texts, " / "), maxComment), words: r.Words})
+	}
+	slices.SortStableFunc(reviews, func(a, b packReview) int { return cmp.Or(cmp.Compare(b.words, a.words), cmp.Compare(a.Ref, b.Ref)) })
+	if len(reviews) > maxReviews {
+		in.Omitted.Reviews, reviews = len(reviews)-maxReviews, reviews[:maxReviews]
+	}
+	slices.SortStableFunc(reviews, func(a, b packReview) int { return cmp.Or(cmp.Compare(a.Day, b.Day), cmp.Compare(a.Ref, b.Ref)) })
+	in.Reviews = reviews
 
 	// Its changes: the largest when there are many, in date order; where they were; what the user's
 	// commits said; the largest PRs' descriptions.
@@ -403,6 +437,19 @@ func renderPack(in *packInput, hash string) []byte {
 		}
 		if in.Omitted.Comments > 0 {
 			w("- … %d more\n", in.Omitted.Comments)
+		}
+	}
+	if len(in.Reviews) > 0 {
+		w("\n## Your reviews of others' PRs naming it (their work, not yours)\n\n")
+		for _, r := range in.Reviews {
+			w("- %s %s · %s · by a %s · %s", r.Day, r.Ref, r.Did, r.Author, r.Title)
+			if r.Text != "" {
+				w(": %s", r.Text)
+			}
+			w("\n")
+		}
+		if in.Omitted.Reviews > 0 {
+			w("- … %d more\n", in.Omitted.Reviews)
 		}
 	}
 	if len(in.Changes) > 0 {

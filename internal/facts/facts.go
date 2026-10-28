@@ -20,6 +20,7 @@ type Facts struct {
 	Issues   []*Issue  // by key (natural order)
 	Items    []*Item   // by first activity, then id
 	Docs     []*Doc    // by creation, then id
+	Reviews  []*Review // by repo, then number
 	Repos    []*Repo   // by name
 	Excluded Excluded  // what line counts leave out
 
@@ -32,6 +33,7 @@ type Facts struct {
 	changes     map[string]*Change // by id
 	changeOf    map[string]string  // repo@sha of a commit of the user's -> the change it is part of
 	docs        map[string]*Doc    // by page id
+	reviews     map[string]*Review // by ref
 	events      []event
 	notes       map[string]*noteFile // by file name (the item id, path-encoded), read from the notes directory
 	orphans     []string             // notes naming no item
@@ -87,6 +89,7 @@ type event struct {
 	repo    string
 	added   int // lines, for evLanded
 	deleted int
+	who     string // a reviewed PR's author
 }
 
 const (
@@ -105,6 +108,12 @@ const (
 	evPageCreated     = "page_created"
 	evPageVersion     = "page_version" // the user saved a version of a page
 	evADRVersion      = "adr_version"  // a commit of the user's changed a decision record
+	// reviews of other people's PRs: a submitted review (one requesting changes is counted apart),
+	// one of a bot's PR, and a comment on a PR's diff or conversation
+	evReview           = "review"
+	evChangesRequested = "review_changes"
+	evBotReview        = "review_bot"
+	evReviewComment    = "review_comment"
 )
 
 func (f *Facts) emit(e event) {

@@ -2,6 +2,7 @@ package facts
 
 import (
 	"slices"
+	"strings"
 	"time"
 )
 
@@ -24,10 +25,15 @@ type Totals struct {
 	IssuesWorked      int `json:"issues_worked"` // distinct issues the user acted on
 	IssuesRaised      int `json:"issues_raised"` // reported or created by the user
 	PagesCreated      int `json:"pages_created"`
-	PagesEdited       int `json:"pages_edited"` // distinct pages with a version by the user
-	DocsWritten       int `json:"docs_written"` // distinct substantial docs (pages and ADRs) with a version by the user
-	ADRsWritten       int `json:"adrs_written"` // those that are decision records
-	Items             int `json:"items"`        // distinct work items with something counted toward them
+	PagesEdited       int `json:"pages_edited"`      // distinct pages with a version by the user
+	DocsWritten       int `json:"docs_written"`      // distinct substantial docs (pages and ADRs) with a version by the user
+	ADRsWritten       int `json:"adrs_written"`      // those that are decision records
+	PRsReviewed       int `json:"prs_reviewed"`      // distinct PRs by others, not bots, with a review by the user
+	ChangesRequested  int `json:"changes_requested"` // the user's reviews requesting changes
+	ReviewComments    int `json:"review_comments"`   // the user's comments on others' PRs: on the diff and the conversation
+	AuthorsReviewed   int `json:"authors_reviewed"`  // distinct authors of those PRs
+	BotPRsReviewed    int `json:"bot_prs_reviewed"`  // distinct bots' PRs with a review by the user
+	Items             int `json:"items"`             // distinct work items with something counted toward them
 }
 
 // totalsOf counts the events in w.
@@ -88,11 +94,22 @@ func totalsOf(events []event, w Window) Totals {
 				add("docs", e.key)
 				add("adrs", e.key)
 			}
+		case evReview, evChangesRequested:
+			add("reviewed", e.key)
+			add("authors", strings.ToLower(e.who))
+			if e.kind == evChangesRequested {
+				t.ChangesRequested++
+			}
+		case evBotReview:
+			add("botreviewed", e.key)
+		case evReviewComment:
+			t.ReviewComments++
 		}
 	}
 	t.ActiveDays, t.Items, t.Repos = len(distinct["days"]), len(distinct["items"]), len(distinct["repos"])
 	t.IssuesWorked, t.PagesEdited, t.DocsWritten = len(distinct["worked"]), len(distinct["pages"]), len(distinct["docs"])
 	t.ADRsWritten = len(distinct["adrs"])
+	t.PRsReviewed, t.AuthorsReviewed, t.BotPRsReviewed = len(distinct["reviewed"]), len(distinct["authors"]), len(distinct["botreviewed"])
 	return t
 }
 

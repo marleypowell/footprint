@@ -35,7 +35,9 @@ What only the user can say: impact in numbers, who it was for, what was hard, th
 others.
 ```
 
-- Cite the records in this pack: the item, its issues, its changes, its docs.
+- Cite the records in this pack: the item, its issues, its changes, its docs, its reviews.
+- A review (`review+...`) is the user reviewing someone else's PR: write it as reviewing ("reviewed
+  the retry change and asked for a backoff"), never as the user's change.
 - For an ADR, say what was decided and why, and the user's part in it: they wrote most of the
   record, but the decision is the deciders' (often listed in its front matter) unless the text says
   otherwise.

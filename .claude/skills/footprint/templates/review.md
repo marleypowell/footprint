@@ -11,7 +11,9 @@ the window's overview and `facts.json`, the notes of its items, `profile.md`, `f
 3. **By competency.** Each competency in `framework.md`, with the evidence for it from the notes, or
    "nothing in the data" for the user to fill in.
 4. **The rest.** Smaller work in aggregate (fixes, the work naming no issue), docs written,
-   AI-assisted work (`agent_commits`).
+   AI-assisted work (`agent_commits`), and reviewing others' work: `prs_reviewed`,
+   `authors_reviewed`, `changes_requested`, with two or three reviews where the user's words show
+   judgement (most `words` in `reviews.jsonl`), cited `[[review+<repo>#<n>]]
 5. **Numbers.** A short table of the window's totals, each with its facts.json name.
 6. **Gaps and next.** What the data cannot show (the coverage section), and the open questions.
 

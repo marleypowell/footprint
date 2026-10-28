@@ -50,11 +50,23 @@ type NoteCounts struct {
 }
 
 var notCollected = []string{
-	"reviews of other people's PRs, and comments on PRs",
+	"reviews of other people's PRs, and comments on PRs", // reviewsNotCollected once the reviews stage ran
 	"the descriptions of PRs merged on a host repos were migrated from (only their squash commits' messages)",
 	"issues the user only commented on, edited or watched, unless their git work names them",
 	"comments on other people's wiki pages, and the text of earlier page versions",
 	"work outside the code host, issue tracker and wiki: design talks, incidents, interviews, mentoring, meetings",
+}
+
+// reviewsNotCollected is what the reviews stage leaves out.
+const reviewsNotCollected = "the user's replies to reviews on their own PRs, and reviews on a host repos were migrated from"
+
+// notCollected says what the dataset leaves out.
+func (f *Facts) notCollected() []string {
+	out := slices.Clone(notCollected)
+	if f.raw.ReviewsRan {
+		out[0] = reviewsNotCollected
+	}
+	return out
 }
 
 // Summary is the window's facts.json.
@@ -62,7 +74,7 @@ func (f *Facts) Summary(w Window) Summary {
 	s := Summary{PackVersion: PackVersion, Window: w.String(), Totals: totalsOf(f.events, w), Excluded: f.Excluded}
 	s.ByYear, s.ByQuarter = periods(f.events, w)
 	s.TeamSignals = f.teamSignals(w)
-	s.Coverage = Coverage{Sources: f.raw.Index.Sources, NotCollected: notCollected}
+	s.Coverage = Coverage{Sources: f.raw.Index.Sources, NotCollected: f.notCollected()}
 	s.Coverage.First, s.Coverage.Last = span(f.events, w)
 	for _, pr := range f.raw.PRs {
 		if d := dayOf(pr.CreatedAt); d != "" && (s.Coverage.PRsFrom == "" || d < s.Coverage.PRsFrom) {
@@ -145,6 +157,7 @@ func (f *Facts) Write(dir string, windows ...Window) error {
 	put("issues.jsonl")(jsonl(f.Issues))
 	put("docs.jsonl")(jsonl(f.Docs))
 	put("repos.jsonl")(jsonl(f.Repos))
+	put("reviews.jsonl")(jsonl(f.Reviews))
 	files["overview.md"] = f.overview(All)
 	files["catalogue.md"] = f.catalogue()
 	files["todo.txt"] = f.todo(All)

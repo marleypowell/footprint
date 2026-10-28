@@ -64,6 +64,7 @@ type Item struct {
 	Changes     []string  `json:"changes"`      // the changes counted toward it
 	AlsoChanges []string  `json:"also_changes"` // changes naming it that count toward another item; an ADR's, the changes that wrote it
 	Docs        []string  `json:"docs"`         // docs naming it, and ADRs written in its changes
+	Reviews     []string  `json:"reviews"`      // others' PRs naming it that the user reviewed
 	Pack        string    `json:"pack"`         // the input hash of packs/<id>.md
 	Note        string    `json:"note"`         // current, stale, missing, invalid, or optional (not required, none yet)
 
@@ -112,7 +113,7 @@ func (f *Facts) item(id, kind string) *Item {
 		return it
 	}
 	it := &Item{ID: id, Kind: kind, Repos: []string{}, Issues: []string{}, Features: []string{}, Changes: []string{},
-		AlsoChanges: []string{}, Docs: []string{}}
+		AlsoChanges: []string{}, Docs: []string{}, Reviews: []string{}}
 	if is := f.issues[id]; is != nil && (kind == KindFeature || kind == KindInitiative) {
 		it.own, it.Title, it.URL, it.Type, it.Status = is, is.Title, is.URL, is.Type, is.StatusCategory
 	}
@@ -179,6 +180,7 @@ func (f *Facts) buildItems() {
 		}
 	}
 	f.linkDocs()
+	f.buildReviews()
 
 	// Events, each counted toward one item.
 	for _, c := range f.Changes {
@@ -203,6 +205,11 @@ func (f *Facts) buildItems() {
 	for _, d := range f.Docs {
 		for _, e := range d.evs {
 			e.item = d.Item
+			f.emit(e)
+		}
+	}
+	for _, r := range f.Reviews {
+		for _, e := range r.evs {
 			f.emit(e)
 		}
 	}

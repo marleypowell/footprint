@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 
@@ -200,7 +201,38 @@ func fixture() *Raw {
 				version("c7", "M", "docs/decisions/0002-theirs.md", jane, "2024-02-01T10:00:00Z", "author", "committer"),
 			}},
 	}
+	reviewed := func(n int, author string, keys []string, mod func(*codehost.ReviewedPullRequest)) collect.ReviewRecord {
+		p := codehost.ReviewedPullRequest{Repo: "app", Number: n, URL: "https://code.example/org/app/pull/" + itoa(n),
+			Title: "theirs " + itoa(n), State: "MERGED", Author: ptr(author), Reviews: []codehost.ReviewerReview{}, Comments: []codehost.Comment{}}
+		if mod != nil {
+			mod(&p)
+		}
+		return collect.ReviewRecord{ReviewedPullRequest: p, IssueKeys: keys}
+	}
+	reviews := []collect.ReviewRecord{
+		// a colleague's PR on the user's feature
+		reviewed(21, "sam", []string{"ENG-1"}, func(p *codehost.ReviewedPullRequest) {
+			p.Reviews = []codehost.ReviewerReview{
+				{ID: "r1", State: codehost.ReviewChangesRequested, SubmittedAt: "2024-01-10T10:00:00Z", Body: "Needs a backoff before retrying",
+					Comments: []codehost.ReviewComment{{ID: "rc1", Path: "q.go", Body: "cap this", CreatedAt: "2024-01-10T10:00:00Z"}}},
+				{ID: "r2", State: codehost.ReviewApproved, SubmittedAt: "2024-01-11T10:00:00Z"},
+			}
+			p.Comments = []codehost.Comment{{ID: "c1", Body: "thanks", CreatedAt: "2024-01-11T11:00:00Z"}}
+		}),
+		reviewed(22, "renovate", nil, func(p *codehost.ReviewedPullRequest) {
+			p.AuthorIsBot = true
+			p.Reviews = []codehost.ReviewerReview{{ID: "r3", State: codehost.ReviewApproved, SubmittedAt: "2024-02-10T10:00:00Z"}}
+		}),
+		// a comment only, on a PR naming an issue outside the dataset
+		reviewed(23, "sam", []string{"ENG-404"}, func(p *codehost.ReviewedPullRequest) {
+			p.Comments = []codehost.Comment{{ID: "c2", Body: "a question", CreatedAt: "2024-02-11T10:00:00Z"}}
+		}),
+		reviewed(24, "Alex", nil, func(p *codehost.ReviewedPullRequest) {
+			p.Reviews = []codehost.ReviewerReview{{ID: "r4", State: codehost.ReviewApproved, SubmittedAt: "2024-04-05T10:00:00Z"}}
+		}),
+	}
 	return &Raw{
+		Reviews: reviews, ReviewsRan: true,
 		Index: collect.Index{Identity: collect.IdentityConfig{Emails: []string{"jane@example.com"}, Names: []string{"Jane Doe"}},
 			Sources: collect.Sources{CodeHost: "fakehost", Catalog: "fakecatalog", IssueTracker: ptr("faketracker"), Wiki: ptr("fakewiki")},
 			Repos:   []collect.IndexRepo{{Name: "app", URL: "https://code.example/org/app", FirstCommitInRepo: ptr("2024-01-02T09:00:00Z")}}},
@@ -260,6 +292,7 @@ func TestCountingRules(t *testing.T) {
 		ActiveDays: all.ActiveDays, ChangesLanded: 3, PRsOpened: 3, PRsMerged: 2, MigratedPRsMerged: 1, MergedForOthers: 1,
 		Commits: 6, CommitsCoAuthored: 1, AgentCommits: 1, LinesAdded: 60, LinesDeleted: 7, Repos: 1, IssuesDone: 2, IssuesWorked: 3,
 		IssuesRaised: 1, PagesCreated: 1, PagesEdited: 2, DocsWritten: 2, ADRsWritten: 1, Items: all.Items,
+		PRsReviewed: 2, ChangesRequested: 1, ReviewComments: 3, AuthorsReviewed: 2, BotPRsReviewed: 1,
 	})
 
 	// Every event counts toward one item, or none: items (initiatives aside) add up to the totals.
@@ -516,6 +549,63 @@ func TestCheck(t *testing.T) {
 }
 
 // The same dataset, notes and context give the same bytes, whatever order the records come in.
+func TestReviews(t *testing.T) {
+	f := build(t, fixture(), Inputs{})
+	var refs []string
+	for _, r := range f.Reviews {
+		refs = append(refs, r.Ref+" "+r.AuthorClass+" "+r.Item)
+	}
+	check(t, "reviews, and the items they count toward", refs, []string{
+		"review+app#21 colleague ENG-1", "review+app#22 bot ", "review+app#23 colleague ", "review+app#24 colleague "})
+	r := f.reviews["review+app#21"]
+	check(t, "a review's counts", []any{r.Reviews, r.Comments, r.Words, r.First, r.Last, r.did()},
+		[]any{ReviewStates{Approved: 1, ChangesRequested: 1}, 2, 8, "2024-01-10", "2024-01-11", "changes requested, approved; 2 comments"})
+
+	it := f.items["ENG-1"]
+	check(t, "an item lists the reviews naming it", it.Reviews, []string{"review+app#21"})
+	check(t, "reviews count in an item's totals", []int{it.Totals.PRsReviewed, it.Totals.ChangesRequested, it.Totals.ReviewComments}, []int{1, 1, 2})
+	for _, d := range it.days {
+		if d == "2024-01-10" || d == "2024-01-11" {
+			t.Errorf("review days are not the item's: %v", it.days)
+		}
+	}
+	all := activeDays(f.events, All)
+	if !slices.Contains(all, "2024-01-10") || !slices.Contains(all, "2024-04-05") {
+		t.Errorf("review days are the user's active days: %v", all)
+	}
+	pack := string(renderPack(it.pack, it.Pack))
+	if !strings.Contains(pack, "## Your reviews of others' PRs naming it (their work, not yours)\n\n"+
+		"- 2024-01-10 review+app#21 · changes requested, approved; 2 comments · by a colleague · theirs 21: Needs a backoff before retrying / cap this / thanks\n") {
+		t.Errorf("pack:\n%s", pack)
+	}
+	if strings.Contains(string(renderPack(f.items["ENG-2"].pack, "")), "reviews") {
+		t.Error("a pack without reviews mentions them")
+	}
+	if b, _ := json.Marshal(f.items["ENG-2"].pack); strings.Contains(string(b), `"reviews"`) {
+		t.Error("a pack without reviews has a reviews field, which changes its hash")
+	}
+
+	head := "---\nitem: ENG-1\ninputs: " + it.Pack + "\n---\n"
+	var body strings.Builder
+	for _, s := range NoteSections {
+		body.WriteString("\n## " + s + "\n\nReviewed [[review+app#21]], not [[review+app#24]].\n")
+	}
+	findings := f.Check("notes/ENG-1.md", head+body.String())
+	if len(findings) == 0 || !strings.Contains(findings[0].String(), "review+app#24") || strings.Contains(fmt.Sprint(findings), "review+app#21") {
+		t.Errorf("findings: %v", findings)
+	}
+	final := f.Final("---\nwindow: all\n---\nI reviewed 2 PRs by 2 people [[review+app#21]].\n", true)
+	check(t, "a review links to its PR", final, "I reviewed 2 PRs by 2 people [review+app#21](https://code.example/org/app/pull/21).\n")
+	if fd := f.Check("draft.md", "---\nwindow: all\n---\nI reviewed 2 PRs and asked for changes once, in 2 comments [[review+app#21]].\n"); len(fd) > 0 {
+		t.Errorf("review numbers in scope: %v", fd)
+	}
+
+	check(t, "not collected, once reviews are", f.Summary(All).Coverage.NotCollected[0], reviewsNotCollected)
+	raw := fixture()
+	raw.Reviews, raw.ReviewsRan = nil, false
+	check(t, "not collected, before", build(t, raw, Inputs{}).Summary(All).Coverage.NotCollected[0], notCollected[0])
+}
+
 func TestDeterministic(t *testing.T) {
 	write := func(raw *Raw) map[string][]byte {
 		dir := filepath.Join(t.TempDir(), "facts")
@@ -542,6 +632,7 @@ func TestDeterministic(t *testing.T) {
 	r.Shuffle(len(shuffled.Commits), func(i, j int) { shuffled.Commits[i], shuffled.Commits[j] = shuffled.Commits[j], shuffled.Commits[i] })
 	r.Shuffle(len(shuffled.PRs), func(i, j int) { shuffled.PRs[i], shuffled.PRs[j] = shuffled.PRs[j], shuffled.PRs[i] })
 	r.Shuffle(len(shuffled.Issues), func(i, j int) { shuffled.Issues[i], shuffled.Issues[j] = shuffled.Issues[j], shuffled.Issues[i] })
+	r.Shuffle(len(shuffled.Reviews), func(i, j int) { shuffled.Reviews[i], shuffled.Reviews[j] = shuffled.Reviews[j], shuffled.Reviews[i] })
 	r.Shuffle(len(shuffled.Pages), func(i, j int) { shuffled.Pages[i], shuffled.Pages[j] = shuffled.Pages[j], shuffled.Pages[i] })
 	r.Shuffle(len(shuffled.Decisions), func(i, j int) {
 		shuffled.Decisions[i], shuffled.Decisions[j] = shuffled.Decisions[j], shuffled.Decisions[i]
@@ -555,7 +646,7 @@ func TestDeterministic(t *testing.T) {
 			t.Errorf("%s differs when the input is shuffled", name)
 		}
 	}
-	for _, name := range []string{"README.md", "facts.json", "items.jsonl", "packs/ENG-1.md", "windows/2024-01-01_2024-03-31/overview.md", "catalogue.md", "todo.txt"} {
+	for _, name := range []string{"README.md", "facts.json", "items.jsonl", "packs/ENG-1.md", "windows/2024-01-01_2024-03-31/overview.md", "catalogue.md", "todo.txt", "reviews.jsonl"} {
 		if _, ok := a[name]; !ok {
 			t.Errorf("no %s", name)
 		}
@@ -586,7 +677,7 @@ func TestLoad(t *testing.T) {
 	}
 	raw.Index.Repos[0].Dir = "repos/.app"
 	raw.Index.Repos[0].Files = map[string]string{"commits": "repos/.app/commits.jsonl", "prs": "repos/.app/prs.jsonl",
-		"decisions": "repos/.app/decisions.jsonl"}
+		"decisions": "repos/.app/decisions.jsonl", "reviews": "repos/.app/reviews.jsonl"}
 	// a repo without PRs: the index lists no prs file for it
 	lib := commit("l1", "2024-01-02T10:00:00Z", jane, []string{"author", "committer"}, "lib work", func(c *collect.Commit) { c.Repo = "lib" })
 	raw.Index.Repos = append(raw.Index.Repos, collect.IndexRepo{Name: "lib", Dir: "repos/lib", Files: map[string]string{"commits": "repos/lib/commits.jsonl"}})
@@ -599,6 +690,8 @@ func TestLoad(t *testing.T) {
 	write("repos/.app/commits.jsonl", raw.Commits, true)
 	write("repos/.app/prs.jsonl", raw.PRs, true)
 	write("repos/.app/decisions.jsonl", raw.Decisions, true)
+	write("repos/.app/reviews.jsonl", raw.Reviews, true)
+	write("org/reviews.json", collect.ReviewsSummary{PRs: len(raw.Reviews)}, false)
 	write("issues/ENG.jsonl", raw.Issues, true)
 	write("wiki/ENG.jsonl", raw.Pages, true)
 	write("org/issue_projects.json", raw.IssueProjects, false)
@@ -606,8 +699,9 @@ func TestLoad(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	check(t, "loaded", []int{len(got.Projects), len(got.Commits), len(got.PRs), len(got.Decisions), len(got.Issues), len(got.Pages), len(got.IssueProjects)},
-		[]int{2, len(raw.Commits) + 1, len(raw.PRs), len(raw.Decisions), len(raw.Issues), len(raw.Pages), 1})
+	check(t, "loaded", []int{len(got.Projects), len(got.Commits), len(got.PRs), len(got.Decisions), len(got.Issues), len(got.Pages), len(got.IssueProjects), len(got.Reviews)},
+		[]int{2, len(raw.Commits) + 1, len(raw.PRs), len(raw.Decisions), len(raw.Issues), len(raw.Pages), 1, len(raw.Reviews)})
+	check(t, "the reviews stage ran", got.ReviewsRan, true)
 	if _, err := Load(t.TempDir()); err == nil || !strings.Contains(err.Error(), "no index.json") {
 		t.Errorf("want a clear error without a dataset, got %v", err)
 	}

@@ -12,6 +12,9 @@ overview and `facts.json`, and the notes of its items.
 3. **Scope.** The initiatives the user drove or planned (an initiative's involvement; issues they
    raised), the repos they started (`repos.jsonl` -> `started_by_me`), the systems they worked across.
 4. **Influence.** Docs written, work raised for others, work done with others (co-authored commits,
-   colleagues' commits in their PRs).
+   colleagues' commits in their PRs), and the bar they held in review: the breadth
+   (`authors_reviewed`, the repos in `reviews.jsonl`) and `changes_requested`, with the reviews
+   where their comments taught or caught something, cited `[[review+<repo>#<n>]]`. Approvals alone
+   follow the team's review policy: they are volume, not influence.
 5. **Numbers.** A short table of the window's totals, each with its facts.json name.
 6. **Questions a panel will ask.** The open questions, for the user to answer before sharing.
