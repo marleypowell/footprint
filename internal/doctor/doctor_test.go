@@ -50,6 +50,7 @@ func newFixture(t *testing.T) *fixture {
 		Identities: []collect.IdentityEntry{{Name: "Jane Doe", Email: "jane@acme.test", MatchedByConfig: &matched, Author: 3}}}, collected)
 	f.write("org/repos.json", []collect.Repo{{Name: "pay"}, {Name: "empty", IsEmpty: true}}, collected)
 	f.write("issues/unresolved.json", []collect.UnresolvedKey{}, collected)
+	f.write("org/reviews.json", collect.ReviewsSummary{PRs: 2, Repos: 1}, collected)
 	f.write("wiki/ENG.jsonl", map[string]any{"id": "1"}, collected)
 	f.cache("mirror_status.json", map[string]collect.MirrorStatus{"pay": {Name: "pay", OK: true, FetchedAt: stamp(collected.Add(-2 * time.Hour))}})
 	return f
@@ -214,6 +215,13 @@ func TestIssues(t *testing.T) {
 	expect(t, f.run()["issues"], Skip)
 }
 
+func TestReviews(t *testing.T) {
+	f := newFixture(t)
+	expect(t, f.run()["reviews"], Pass, "2 PRs by others")
+	os.Remove(filepath.Join(f.in.DataDir, "org", "reviews.json"))
+	expect(t, f.run()["reviews"], Warn, "never collected", "footprint reviews projects")
+}
+
 func TestPages(t *testing.T) {
 	f := newFixture(t)
 	os.RemoveAll(filepath.Join(f.in.DataDir, "wiki"))
@@ -255,7 +263,7 @@ func TestStale(t *testing.T) {
 	f = newFixture(t)
 	f.in.Now = collected.Add(45 * 24 * time.Hour)
 	f.in.Config.IssueTracker, f.in.Config.Wiki = nil, nil
-	expect(t, f.run()["stale"], Warn, "last collected 45 days ago (re-run mirror prs commits projects verify)", "\nfootprint mirror prs commits projects verify\n")
+	expect(t, f.run()["stale"], Warn, "last collected 45 days ago (re-run mirror prs reviews commits projects verify)", "\nfootprint mirror prs reviews commits projects verify\n")
 
 	f = newFixture(t)
 	f.in.Config = nil // a copied dataset: the identity it recorded, and no mirror state

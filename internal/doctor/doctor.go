@@ -118,7 +118,7 @@ func Run(in Inputs) (Report, error) {
 		d.tracker, d.wiki = c.IssueTracker != nil, c.Wiki != nil
 	}
 	var r Report
-	for _, check := range []func() (Check, error){d.verify, d.identities, d.issues, d.pages, d.mirror, d.stale, d.env} {
+	for _, check := range []func() (Check, error){d.verify, d.identities, d.reviews, d.issues, d.pages, d.mirror, d.stale, d.env} {
 		c, err := check()
 		if err != nil {
 			return Report{}, err
@@ -360,6 +360,20 @@ func (d *dataset) issues() (Check, error) {
 	return c, nil
 }
 
+// reviews: the reviews stage ran, so that no reviews reads as none rather than unknown.
+func (d *dataset) reviews() (Check, error) {
+	c := Check{ID: "reviews"}
+	var s collect.ReviewsSummary
+	ok, err := readJSON(d.raw("org", "reviews.json"), &s)
+	if err != nil || !ok {
+		c.Status, c.Summary, c.Fix = Warn, "reviews of other people's PRs were never collected", "footprint reviews projects"
+		return c, err
+	}
+	c.Status = Pass
+	c.Summary = fmt.Sprintf("%d PRs by others reviewed or commented on, in %d repos", s.PRs, s.Repos)
+	return c, nil
+}
+
 // pages: with a wiki configured, the pages stage ran.
 func (d *dataset) pages() (Check, error) {
 	c := Check{ID: "pages"}
@@ -485,7 +499,7 @@ func (d *dataset) stale() (Check, error) {
 	}
 	if t, err := time.Parse(time.RFC3339, last); err == nil && d.in.Now.Sub(t) > d.in.MaxAge {
 		found(fmt.Sprintf("the data was last collected %d days ago", int(d.in.Now.Sub(t).Hours()/24)),
-			"mirror", "prs", "commits", "projects", "verify", "issues", "pages")
+			"mirror", "prs", "reviews", "commits", "projects", "verify", "issues", "pages")
 	}
 	if len(c.Details) == 0 {
 		c.Status, c.Summary = Pass, "every stage ran after the stages it reads"

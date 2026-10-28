@@ -26,6 +26,7 @@ org/
   identities.json             every author/committer/co-author identity resembling the user, with counts
   issue_projects.json         the issue tracker's projects, live and archived, for decoding issue_keys
   verification.json           cross-check against the code host's own attribution (see Completeness)
+  reviews.json                totals of the reviews stage; present once it ran (see reviews.jsonl)
 catalog/
   entities.jsonl              every catalog entity found on any default branch in the org
   files/<repo>/<path>         the raw descriptor files those entities came from
@@ -35,6 +36,7 @@ repos/<repo>/
   docs/<path>                 README / CLAUDE.md / AGENTS.md / docs index / package.json from the default branch
   commits.jsonl               the user's commits (one JSON object per line, oldest first)
   prs.jsonl                   pull requests authored by the user (one per line, by number)
+  reviews.jsonl               other people's pull requests the user reviewed or commented on (one per line, by number)
   decisions.jsonl             decision records (ADRs) on the default branch the user committed to (one per line, by path)
 issues/
   <project>.jsonl             issues ever assigned to the user or named in their git work, and the issues
@@ -117,6 +119,27 @@ Pull requests (merge requests, on GitLab) whose author is the user, in any state
 | `files` | every changed path with `additions`, `deletions`, `change_type` |
 | `issue_keys` | from title, body and head branch name, as for commits |
 
+## reviews.jsonl
+
+Pull requests someone else opened (bots included) that the user reviewed or commented on, in any
+state, with only the user's part of the review. A repo can have this file and no other: the user
+reviewed there without committing.
+
+| field | meaning |
+|---|---|
+| `repo`, `number`, `url`, `title`, `body` | the PR and its description, by its author |
+| `state`, `is_draft`, `created_at`, `closed_at`, `merged_at` | lifecycle |
+| `author`, `author_is_bot`, `merged_by`, `base_ref`, `head_ref` | who opened and merged it, and its refs |
+| `additions`, `deletions`, `changed_files`, `closing_issues` | its size and the issues it closes |
+| `reviews` | the user's submitted reviews, oldest first: `id`, `url`, `state` (`approved`, `changes_requested`, `commented`, or `dismissed`: a review the host or someone set aside, often an approval made stale by a later push), `submitted_at`, `body`, and `comments` on lines of the diff (`id`, `url`, `path`, `body`, `created_at`, `in_reply_to`: the comment it answers in a thread) |
+| `comments` | the user's comments on the PR's conversation, oldest first: `id`, `url`, `body`, `created_at` |
+| `issue_keys` | from title, body and head branch name, as for commits |
+
+`org/reviews.json` totals them (`prs`, `reviews`, `review_comments` inline, `comments` on the
+conversation, `repos`). Without it the stage never ran, and reviews are unknown rather than none.
+The code host finds reviews only on its own PRs: reviews on a host the repos were migrated from are
+not there.
+
 ## project.json (what each project is)
 
 | field | meaning |
@@ -127,7 +150,7 @@ Pull requests (merge requests, on GitLab) whose author is the user, in any state
 | `catalog.context` | entities those are part of, resolved transitively through `part_of`: the system and its domain, owner groups, parent components. `null` = referenced but not defined in any descriptor (e.g. groups synced from the IdP) |
 | `docs` | files saved under `docs/`: root README, CLAUDE.md, AGENTS.md, copilot instructions, docs index, mkdocs.yml, package.json, plus READMEs next to each catalog descriptor |
 | `tree_top` | the repo's directory layout to depth 2: a fallback for undocumented repos |
-| `activity` | headline counts and first/last dates computed from `commits.jsonl` and `prs.jsonl` (`issue_keys` is a count) |
+| `activity` | headline counts and first/last dates computed from `commits.jsonl` and `prs.jsonl` (`issue_keys` is a count), and `prs_reviewed` from `reviews.jsonl` |
 
 For repos with no catalog entity and no description, `docs/` and `tree_top` are the only description.
 
@@ -277,7 +300,7 @@ Not covered:
 - Decision records outside the layouts above, and those not on a default branch.
 - Commits by agents (e.g. Claude Code on the web, `claude/*` branches) that neither name the user nor
   sit in a PR the user authored: nothing in git ties them to the user.
-- Reviews of other people's PRs, and PR comments.
+- The user's replies to reviews on their own PRs, and reviews on a host the repos were migrated from.
 - Issues the user only commented on, edited or watched, unless git work names them; anything the
   tracker or wiki hides from the account.
 - The user's comments on other people's wiki pages, earlier versions' bodies, and attachments.

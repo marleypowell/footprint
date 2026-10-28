@@ -39,10 +39,10 @@ type Tools struct {
 }
 
 // StageOrder is the order `all` runs the stages in. commits reads prs (for the pr-author role), and
-// issues reads both (for the keys they name). prs, commits and projects list the issue tracker's
+// issues reads both (for the keys they name). reviews lists the user's reviews of other people's PRs. prs, commits and projects list the issue tracker's
 // projects, to recognise its keys. issues and pages come last: they refresh their own parts of
 // index.json.
-var StageOrder = []string{"inventory", "mirror", "identities", "prs", "commits", "catalog", "projects", "verify", "issues", "pages"}
+var StageOrder = []string{"inventory", "mirror", "identities", "prs", "reviews", "commits", "catalog", "projects", "verify", "issues", "pages"}
 
 // Stages expands "all" and checks the names, before anything runs.
 func Stages(names []string) ([]string, error) {
@@ -68,6 +68,7 @@ func Run(ctx context.Context, opts Options, cfg *Config, tools Tools, stages []s
 		"mirror":     h.mirror,
 		"identities": h.identities,
 		"prs":        h.prs,
+		"reviews":    h.reviews,
 		"commits":    h.commits,
 		"catalog":    h.catalog,
 		"issues":     h.issues,

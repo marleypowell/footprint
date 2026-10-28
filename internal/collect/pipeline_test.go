@@ -135,10 +135,28 @@ func TestPipeline(t *testing.T) {
 	host := &fakeHost{
 		remotes: map[string]string{"repo": f.dir},
 		repos: []codehost.Repo{{Name: "repo", FullName: "org/repo", URL: "https://code.example/org/repo",
-			DefaultBranch: &mainBranch, CreatedAt: "2024-01-01T00:00:00Z", Languages: []codehost.Language{}, Topics: []string{}}},
+			DefaultBranch: &mainBranch, CreatedAt: "2024-01-01T00:00:00Z", Languages: []codehost.Language{}, Topics: []string{}},
+			// not mirrored, and the user has no commits there: only reviews keep it in the dataset
+			{Name: "web-ui", FullName: "org/web-ui", URL: "https://code.example/org/web-ui", IsEmpty: true,
+				Languages: []codehost.Language{}, Topics: []string{}}},
 		prs: []codehost.PullRequest{
 			{Repo: "repo", Number: 3, Title: "ENG-42: rename a", Commits: []codehost.PRCommit{{SHA: renamed}, {SHA: binary}, {SHA: pushedToMyPR}}},
 			{Repo: "repo", Number: 7, Title: "side work, see ENG-404", MergeCommitSHA: &merge},
+		},
+		reviewed: []codehost.ReviewedPullRequest{
+			{Repo: "repo", Number: 21, Title: "Queue retries for ENG-42", Author: ptr("other"), HeadRef: "retries",
+				Reviews: []codehost.ReviewerReview{
+					{ID: "r2", State: codehost.ReviewApproved, SubmittedAt: "2024-04-03T00:00:00Z"},
+					{ID: "r1", State: codehost.ReviewChangesRequested, SubmittedAt: "2024-04-02T00:00:00Z", Body: "Needs a backoff",
+						Comments: []codehost.ReviewComment{{ID: "rc1", Path: "queue.go", Body: "cap this"}}},
+				},
+				Comments: []codehost.Comment{{ID: "c1", Body: "thanks for the fix"}}},
+			{Repo: "web-ui", Number: 4, Title: "Dark mode", Author: ptr("other"), Comments: []codehost.Comment{{ID: "c2", Body: "looks good"}}},
+			{Repo: "repo", Number: 9, Title: "Bump yaml", Author: ptr("renovate"), AuthorIsBot: true,
+				Reviews: []codehost.ReviewerReview{{ID: "r3", State: codehost.ReviewApproved, SubmittedAt: "2024-05-01T00:00:00Z"}}},
+			{Repo: "repo", Number: 3, Title: "the user's own", Author: ptr("JDoe"),
+				Comments: []codehost.Comment{{ID: "c3", Body: "self"}}},
+			{Repo: "repo", Number: 30, Title: "nothing of the user's", Author: ptr("other")},
 		},
 		attributed: []codehost.AttributedCommit{
 			{Repo: "repo", SHA: authored, AuthorName: "Jane Doe", AuthorEmail: "jane.doe@example.com"},
@@ -317,9 +335,28 @@ func TestPipeline(t *testing.T) {
 	})
 	check("decision created", d.CreatedAt, d.Versions[0].Author.Date)
 
+	// reviews.jsonl: other people's PRs the user reviewed, with only the user's reviews
+	reviewed, err := readJSONL[ReviewRecord](filepath.Join(raw, "repos", "repo", "reviews.jsonl"))
+	if err != nil || len(reviewed) != 2 {
+		t.Fatalf("reviews: %+v %v", reviewed, err)
+	}
+	check("reviewed PRs, by number", []int{reviewed[0].Number, reviewed[1].Number}, []int{9, 21})
+	check("review issue keys", reviewed[1].IssueKeys, []string{"ENG-42"})
+	check("reviews, oldest first", []string{reviewed[1].Reviews[0].ID, reviewed[1].Reviews[1].ID}, []string{"r1", "r2"})
+	check("bot author", reviewed[0].AuthorIsBot, true)
+	if rows, err := readJSONL[ReviewRecord](filepath.Join(raw, "repos", "web-ui", "reviews.jsonl")); err != nil || len(rows) != 1 {
+		t.Errorf("a repo with only reviews: %+v %v", rows, err)
+	}
+	var reviewSummary ReviewsSummary
+	read("org/reviews.json", &reviewSummary)
+	check("reviews summary", []int{reviewSummary.PRs, reviewSummary.Reviews, reviewSummary.ReviewComments, reviewSummary.Comments, reviewSummary.Repos},
+		[]int{3, 3, 1, 2, 2})
+
 	// index.json and org files
 	var index Index
 	read("index.json", &index)
+	check("reviews indexed", []any{index.Totals.PRsReviewed, len(index.Repos), index.Repos[1].Name, index.Repos[1].Files},
+		[]any{3, 2, "web-ui", map[string]string{"reviews": "repos/web-ui/reviews.jsonl"}})
 	check("sources", index.Sources, Sources{CodeHost: "fakehost", Catalog: "fakecatalog", IssueTracker: ptr("faketracker"), Wiki: ptr("fakewiki")})
 	check("index login", index.Login, "jdoe")
 	check("index catalog summary", index.Repos[0].Catalog, []IndexEntity{{Ref: "service:repo", Category: "component",
@@ -343,7 +380,7 @@ func TestPipeline(t *testing.T) {
 		t.Error("schema doc not written")
 	}
 	b, _ := json.Marshal(index.Repos[0].Files)
-	check("index files", string(b), `{"commits":"repos/repo/commits.jsonl","decisions":"repos/repo/decisions.jsonl","prs":"repos/repo/prs.jsonl"}`)
+	check("index files", string(b), `{"commits":"repos/repo/commits.jsonl","decisions":"repos/repo/decisions.jsonl","prs":"repos/repo/prs.jsonl","reviews":"repos/repo/reviews.jsonl"}`)
 
 	// issues/: assigned at some point (by the tracker's search, or its history), or named in git work
 	records, err := readJSONL[IssueRecord](filepath.Join(raw, "issues", "ENG.jsonl"))
@@ -417,7 +454,7 @@ func TestPipeline(t *testing.T) {
 	// nothing; the issues/ files already collected stay.
 	cfg.IssueTracker = nil
 	noTracker := Tools{Host: host, Catalog: fakeCatalog{}, Wiki: notes}
-	if err := Run(context.Background(), opts, cfg, noTracker, []string{"prs", "commits", "projects", "issues"}); err != nil {
+	if err := Run(context.Background(), opts, cfg, noTracker, []string{"prs", "reviews", "commits", "projects", "issues"}); err != nil {
 		t.Fatal(err)
 	}
 	if rows, err = readJSONL[Commit](filepath.Join(raw, "repos", "repo", "commits.jsonl")); err != nil || len(rows) != 10 {
@@ -430,6 +467,10 @@ func TestPipeline(t *testing.T) {
 		t.Fatal(err)
 	}
 	check("PR issue keys without an issue tracker", prs[0].IssueKeys, []string{})
+	if reviewed, err = readJSONL[ReviewRecord](filepath.Join(raw, "repos", "repo", "reviews.jsonl")); err != nil || len(reviewed) != 2 {
+		t.Fatalf("reviews without an issue tracker: %d, %v", len(reviewed), err)
+	}
+	check("review issue keys without an issue tracker", reviewed[1].IssueKeys, []string{})
 	if decisions, err = readJSONL[Decision](filepath.Join(raw, "repos", "repo", "decisions.jsonl")); err != nil || len(decisions) != 1 {
 		t.Fatalf("decisions without an issue tracker: %d, %v", len(decisions), err)
 	}
@@ -442,6 +483,17 @@ func TestPipeline(t *testing.T) {
 	if !fileExists(filepath.Join(raw, "issues", "ENG.jsonl")) {
 		t.Error("the issues stage removed issues without an issue tracker")
 	}
+
+	// With no reviews any more, their files go, and so does a repo they alone kept.
+	host.reviewed = nil
+	if err := Run(context.Background(), opts, cfg, noTracker, []string{"reviews", "projects"}); err != nil {
+		t.Fatal(err)
+	}
+	if fileExists(filepath.Join(raw, "repos", "repo", "reviews.jsonl")) || fileExists(filepath.Join(raw, "repos", "web-ui")) {
+		t.Error("reviews outlived the user's reviews")
+	}
+	read("org/reviews.json", &reviewSummary)
+	check("no reviews", reviewSummary.PRs, 0)
 }
 
 // When the tracker loads none of the issues, the stage fails and keeps the previous files.

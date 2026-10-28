@@ -1,7 +1,8 @@
 # footprint
 
 Collects raw data about **your** work across an org: every commit you made (full message and
-per-file stats) from the start of each repo's history, the pull requests you authored, what each
+per-file stats) from the start of each repo's history, the pull requests you authored and the ones
+you reviewed, what each
 project is (service catalog entities, READMEs, CLAUDE.md, code host metadata), the issues you were
 assigned or that your commits and PRs name (with comments, history and worklogs), the architecture
 decision records (ADRs) you committed to, and the wiki pages you created or edited.
@@ -81,6 +82,7 @@ it is not (see [Completeness](#completeness)). Then open `data/raw/index.json`.
 | `mirror` | bare clone / incremental fetch of every non-empty repo into `cache/mirrors/` | branches, tags and change-request heads; ~3 min cold |
 | `identities` | lists every identity resembling you, with counts | flags variants your config does not match |
 | `prs` | your PRs with their commits and files | GitHub: GraphQL search, ~4 min |
+| `reviews` | other people's PRs you reviewed or commented on, with your reviews and comments | GitHub: GraphQL search, ~7 min for 1,700 PRs |
 | `commits` | your commits on any ref | local git, ~30 s |
 | `catalog` | every catalog entity on every default branch | local git only |
 | `projects` | per-repo `project.json`, docs, decision records (ADRs) you committed to, `data/raw/index.json`, and the issue tracker's projects | local, plus one project listing; indexes `issues/` and `wiki/` too |
@@ -93,7 +95,7 @@ With an `issue_tracker` section, `prs`, `commits`, `projects` and `pages` list t
 `all` stops at `prs`. `issues` and `pages` run last and refresh their own parts of `index.json`.
 
 Every stage is idempotent and overwrites its own output. To refresh later, run
-`mirror prs commits projects verify issues pages`. Flags can go anywhere on the command line:
+`mirror prs reviews commits projects verify issues pages`. Flags can go anywhere on the command line:
 
 | flag | default | |
 |---|---|---|
@@ -146,7 +148,7 @@ section:
 
 | seam | interface | adapter today | expected next |
 |---|---|---|---|
-| code host | `codehost.Host` (account, repos, PRs, attributed commits, plus URL, ref and merge-message conventions) | `codehost/github` | GitLab |
+| code host | `codehost.Host` (account, repos, PRs, reviewed PRs, attributed commits, plus URL, ref and merge-message conventions) | `codehost/github` | GitLab |
 | service catalog | `catalog.Catalog` (`Scan` one repo's default branch into neutral entities) | `catalog/backstage` | Cortex |
 | issue tracker | `tracker.Tracker` (issue keys in text, the tracker's projects; the account, the issues ever assigned to it, issues loaded by key) | `tracker/jira` | Linear |
 | wiki | `wiki.Wiki` (the account, and everything it created or edited) | `wiki/confluence` | Notion |
@@ -169,6 +171,7 @@ JSON. It exits 1 when a check fails, and calls no tools, so it also works on a c
 |---|---|
 | `verify` | commits the code host credits to you are missing; names the emails to add |
 | `identities` | an identity resembling you is neither configured nor in `identity.not_me` (a warning: only you can say whose it is) |
+| `reviews` | the `reviews` stage never ran (a warning: reviews are then unknown, not none) |
 | `issues` | keys failed to load (fail) or are hidden from the token (warning) |
 | `pages` | a wiki is configured but `pages` never ran |
 | `mirror` | a repo failed to mirror, or was never mirrored |

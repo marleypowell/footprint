@@ -83,6 +83,7 @@ type Activity struct {
 	PRsMerged               int         `json:"prs_merged"`
 	FirstPRAt               *string     `json:"first_pr_at"`
 	LastPRAt                *string     `json:"last_pr_at"`
+	PRsReviewed             int         `json:"prs_reviewed"` // other people's PRs the user reviewed or commented on
 }
 
 // Index is <data>/index.json, the entry point to the dataset.
@@ -115,6 +116,7 @@ type IndexTotals struct {
 	AuthoredCommits         int     `json:"authored_commits"`
 	AuthoredOnDefaultBranch int     `json:"authored_on_default_branch"`
 	PRsAuthored             int     `json:"prs_authored"`
+	PRsReviewed             int     `json:"prs_reviewed"`
 	FirstAuthoredAt         *string `json:"first_authored_at"`
 	LastAuthoredAt          *string `json:"last_authored_at"`
 	Issues                  int     `json:"issues"`          // involving the user
@@ -207,7 +209,8 @@ func (h *harness) projects(ctx context.Context) error {
 	for _, entry := range dirEntries {
 		name, dir := entry.Name(), filepath.Join(h.raw, "repos", entry.Name())
 		hasCommits, hasPRs := fileExists(filepath.Join(dir, "commits.jsonl")), fileExists(filepath.Join(dir, "prs.jsonl"))
-		if !hasCommits && !hasPRs {
+		hasReviews := fileExists(filepath.Join(dir, "reviews.jsonl"))
+		if !hasCommits && !hasPRs && !hasReviews {
 			if entry.IsDir() { // no activity any more (identity config changed, say)
 				if err := os.RemoveAll(dir); err != nil {
 					return err
@@ -262,7 +265,12 @@ func (h *harness) projects(ctx context.Context) error {
 		if err != nil {
 			return err
 		}
+		reviewed, err := readJSONL[ReviewRecord](filepath.Join(dir, "reviews.jsonl"))
+		if err != nil {
+			return err
+		}
 		project.Activity = summarizeActivity(commits, prs)
+		project.Activity.PRsReviewed = len(reviewed)
 		item := IndexRepo{
 			Name: name, URL: repo.URL, Dir: "repos/" + name, Files: map[string]string{}, Archived: repo.IsArchived,
 			Description: repo.Description, Catalog: []IndexEntity{}, Docs: []string{},
@@ -280,6 +288,9 @@ func (h *harness) projects(ctx context.Context) error {
 		}
 		if hasPRs {
 			item.Files["prs"] = "repos/" + name + "/prs.jsonl"
+		}
+		if hasReviews {
+			item.Files["reviews"] = "repos/" + name + "/reviews.jsonl"
 		}
 		if len(decisions) > 0 {
 			item.Files["decisions"] = "repos/" + name + "/decisions.jsonl"
@@ -307,6 +318,7 @@ func (h *harness) projects(ctx context.Context) error {
 		totals.AuthoredCommits += r.Authored
 		totals.AuthoredOnDefaultBranch += r.AuthoredOnDefaultBranch
 		totals.PRsAuthored += r.PRsAuthored
+		totals.PRsReviewed += r.PRsReviewed
 		if r.FirstAuthoredAt != nil && (totals.FirstAuthoredAt == nil || *r.FirstAuthoredAt < *totals.FirstAuthoredAt) {
 			totals.FirstAuthoredAt = r.FirstAuthoredAt
 		}

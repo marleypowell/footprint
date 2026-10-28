@@ -24,6 +24,7 @@ type fakeHost struct {
 	remotes    map[string]string // repo name -> local repository to fetch from
 	repos      []codehost.Repo
 	prs        []codehost.PullRequest
+	reviewed   []codehost.ReviewedPullRequest
 	attributed []codehost.AttributedCommit
 }
 
@@ -37,6 +38,10 @@ func (f *fakeHost) Repos(context.Context) ([]codehost.Repo, error) { return f.re
 
 func (f *fakeHost) PullRequests(context.Context, string) ([]codehost.PullRequest, error) {
 	return f.prs, nil
+}
+
+func (f *fakeHost) Reviewed(context.Context, string) ([]codehost.ReviewedPullRequest, error) {
+	return f.reviewed, nil
 }
 
 func (f *fakeHost) AttributedCommits(_ context.Context, _ string, limit int) ([]codehost.AttributedCommit, error) {

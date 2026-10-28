@@ -38,6 +38,8 @@ Stages, in the order "all" runs them:
               PRs with deleted branches are still reachable)
   identities  every identity resembling the user, with counts  -> <data>/org/identities.json
   prs         pull requests authored by the user               -> <data>/repos/<repo>/prs.jsonl
+  reviews     other people's pull requests the user reviewed   -> <data>/repos/<repo>/reviews.jsonl,
+              or commented on, with only the user's part          <data>/org/reviews.json
   commits     the user's commits on any ref (author, committer, co-author, or in one of
               the user's PRs), full message + per-file stats   -> <data>/repos/<repo>/commits.jsonl
   catalog     every catalog entity on every default branch     -> <data>/catalog/

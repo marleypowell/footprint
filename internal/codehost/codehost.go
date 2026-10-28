@@ -1,13 +1,14 @@
 // Package codehost is the seam to the service hosting an org's git repositories. GitHub is the
-// adapter today (codehost/github); GitLab is the expected second. Repo and PullRequest are also
-// output records (repos.json, prs.jsonl), so their JSON names are part of docs/data-schema.md.
+// adapter today (codehost/github); GitLab is the expected second. Repo, PullRequest and
+// ReviewedPullRequest are also output records (repos.json, prs.jsonl, reviews.jsonl), so their JSON
+// names are part of docs/data-schema.md.
 package codehost
 
 import "context"
 
 // Host is one org on a code host, as the authenticated account sees it.
 //
-// Account, Repos, PullRequests and AttributedCommits call the host's API and deal with its
+// Account, Repos, PullRequests, Reviewed and AttributedCommits call the host's API and deal with its
 // pagination, search caps and rate limits. Adapters authenticate on first use, so Remote,
 // CommitURL, FileURL, PullRequestNumbers, MigratedPullRequestNumbers and RepoPath work without
 // credentials.
@@ -19,6 +20,10 @@ type Host interface {
 	// PullRequests lists every change request author opened in the org, in any state, with its
 	// commits and files.
 	PullRequests(ctx context.Context, author string) ([]PullRequest, error)
+	// Reviewed lists every change request in the org that someone other than reviewer opened and
+	// reviewer reviewed or commented on, in any state, with only reviewer's submitted reviews (and
+	// their inline comments) and conversation comments. Pending reviews are left out.
+	Reviewed(ctx context.Context, reviewer string) ([]ReviewedPullRequest, error)
 	// AttributedCommits lists the default-branch commits the host links to author's account,
 	// through any email verified on it. A positive limit asks for a sample of about that many,
 	// split between the newest and the oldest: enough to discover the emails author commits with.
@@ -154,6 +159,67 @@ type Review struct {
 	Author      *string `json:"author"`
 	State       string  `json:"state"`
 	SubmittedAt *string `json:"submitted_at"`
+}
+
+// ReviewedPullRequest is a change request someone else opened, with what the reviewer left on it.
+type ReviewedPullRequest struct {
+	Repo          string           `json:"repo"`
+	Number        int              `json:"number"`
+	URL           string           `json:"url"`
+	Title         string           `json:"title"`
+	Body          string           `json:"body"`
+	State         string           `json:"state"`
+	IsDraft       bool             `json:"is_draft"`
+	CreatedAt     string           `json:"created_at"`
+	ClosedAt      *string          `json:"closed_at"`
+	MergedAt      *string          `json:"merged_at"`
+	Author        *string          `json:"author"`
+	AuthorIsBot   bool             `json:"author_is_bot"`
+	MergedBy      *string          `json:"merged_by"`
+	BaseRef       string           `json:"base_ref"`
+	HeadRef       string           `json:"head_ref"`
+	Additions     int              `json:"additions"`
+	Deletions     int              `json:"deletions"`
+	ChangedFiles  int              `json:"changed_files"`
+	ClosingIssues []ClosingIssue   `json:"closing_issues"`
+	Reviews       []ReviewerReview `json:"reviews"`  // the reviewer's, oldest first
+	Comments      []Comment        `json:"comments"` // the reviewer's conversation comments, oldest first
+}
+
+// Review states, as ReviewerReview records them.
+const (
+	ReviewApproved         = "approved"
+	ReviewChangesRequested = "changes_requested"
+	ReviewCommented        = "commented"
+	ReviewDismissed        = "dismissed"
+)
+
+// ReviewerReview is one review the reviewer submitted, with its inline comments.
+type ReviewerReview struct {
+	ID          string          `json:"id"`
+	URL         string          `json:"url"`
+	State       string          `json:"state"` // ReviewApproved, ReviewChangesRequested, ReviewCommented or ReviewDismissed
+	SubmittedAt string          `json:"submitted_at"`
+	Body        string          `json:"body"`
+	Comments    []ReviewComment `json:"comments"`
+}
+
+// ReviewComment is a comment on a line of a change request's diff.
+type ReviewComment struct {
+	ID        string  `json:"id"`
+	URL       string  `json:"url"`
+	Path      string  `json:"path"`
+	Body      string  `json:"body"`
+	CreatedAt string  `json:"created_at"`
+	InReplyTo *string `json:"in_reply_to"` // the comment this answers, in a thread
+}
+
+// Comment is a comment on a change request's conversation.
+type Comment struct {
+	ID        string `json:"id"`
+	URL       string `json:"url"`
+	Body      string `json:"body"`
+	CreatedAt string `json:"created_at"`
 }
 
 type ClosingIssue struct {
