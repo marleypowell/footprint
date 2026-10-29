@@ -47,6 +47,6 @@ flags and config are in `README.md`.
   not in the skill or an agent's ad hoc queries. `docs/facts-schema.md` is its contract (embedded;
   `facts` writes it to `data/facts/README.md`): change it in the same change as any facts field or
   rule. The output must stay byte-identical for the same inputs (`TestDeterministic`).
-- To use the data (questions, CV, review, promotion or pay rise case, offboarding, interview preparation), follow
+- To use the data (questions, CV, review, promotion or pay rise case, offboarding, job applications), follow
   `.claude/skills/footprint/SKILL.md`. Numbers in documents come only from the facts or the user's
   own words in `data/context/`, and claims cite records that `footprint check` resolves.
