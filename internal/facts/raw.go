@@ -19,6 +19,7 @@ type Raw struct {
 	Projects      []collect.Project // one per repo in the index, in its order
 	Commits       []collect.Commit  // every repo's, in index order then file order
 	PRs           []collect.PullRequestRecord
+	Ownership     []collect.Ownership    // the blame of each repo that has one, in index order
 	Reviews       []collect.ReviewRecord // other people's PRs the user reviewed, by repo in index order
 	ReviewsRan    bool                   // the reviews stage ran (org/reviews.json), so no reviews means none
 	Decisions     []collect.Decision     // decision records in the repos, by repo in index order
@@ -63,6 +64,14 @@ func Load(dir string) (*Raw, error) {
 			return nil, err
 		}
 		raw.Reviews = append(raw.Reviews, reviews...)
+		if name := repo.Files["ownership"]; name != "" {
+			var own collect.Ownership
+			if ok, err := readJSON(filepath.Join(dir, name), &own); err != nil {
+				return nil, err
+			} else if ok {
+				raw.Ownership = append(raw.Ownership, own)
+			}
+		}
 		raw.Commits, raw.PRs, raw.Decisions = append(raw.Commits, commits...), append(raw.PRs, prs...), append(raw.Decisions, decisions...)
 	}
 	for _, g := range raw.Index.IssuesByProject {

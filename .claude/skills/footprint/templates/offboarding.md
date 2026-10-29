@@ -15,7 +15,11 @@ unreleased plans.
    with what each does.
 4. **Skills and technologies.**
 5. **Writing.** The docs they wrote, and what each was for.
-6. **Numbers.** The all-time totals, each with its facts.json name.
+6. **What still stands.** For the systems above, the user's share of the lines the default branches
+   have now (`ownership.jsonl`: `living`, `share_percent`, `as_of`), where they are `top` or
+   `major`, and the totals `lines_living`. Say what blame measures. Their own numbers only: no
+   colleague's name from `others`.
+7. **Numbers.** The all-time totals, each with its facts.json name.
 
 Then go through `data/facts/catalogue.md` (every item with its note) with the user, for anything they
 may not keep. Give them the `-plain` final file and the catalogue to keep together.

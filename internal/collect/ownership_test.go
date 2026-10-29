@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/marleypowell/footprint/internal/catalog"
 	"github.com/marleypowell/footprint/internal/codehost"
 )
 
@@ -68,15 +69,25 @@ func TestTouchedFiles(t *testing.T) {
 
 // A file counts toward its first two directories, or "(root)" at the top.
 func TestDirsOf(t *testing.T) {
-	tests := map[string][]string{
-		"README.md":        {"(root)"},
-		"src/a.go":         {"src/"},
-		"src/app/a.go":     {"src/", "src/app/"},
-		"src/app/x/y/a.go": {"src/", "src/app/"},
+	extra := []string{"apps/web/ui", "apps/web", "tools/x"}
+	tests := []struct {
+		path  string
+		extra []string
+		want  []string
+	}{
+		{"README.md", nil, []string{"(root)"}},
+		{"README.md", extra, []string{"(root)"}},
+		{"src/a.go", nil, []string{"src/"}},
+		{"src/app/a.go", nil, []string{"src/", "src/app/"}},
+		{"src/app/x/y/a.go", nil, []string{"src/", "src/app/"}},
+		{"apps/web/ui/b/a.ts", extra, []string{"apps/", "apps/web/", "apps/web/ui/"}},
+		{"apps/web/a.ts", extra, []string{"apps/", "apps/web/"}},
+		{"tools/x/a.go", extra, []string{"tools/", "tools/x/"}},
+		{"tools/xy/a.go", extra, []string{"tools/", "tools/xy/"}},
 	}
-	for p, want := range tests {
-		if got := dirsOf(p); !reflect.DeepEqual(got, want) {
-			t.Errorf("dirsOf(%q) = %v, want %v", p, got, want)
+	for _, tt := range tests {
+		if got := dirsOf(tt.path, tt.extra); !reflect.DeepEqual(got, tt.want) {
+			t.Errorf("dirsOf(%q, %v) = %v, want %v", tt.path, tt.extra, got, tt.want)
 		}
 	}
 }
@@ -281,5 +292,35 @@ func TestOwnershipStage(t *testing.T) {
 	}
 	if fileExists(filepath.Join(opts.DataDir, "repos", "repo", "ownership.json")) {
 		t.Error("ownership.json outlived the user's commits")
+	}
+}
+
+// The directories that hold a catalog descriptor of software the repo describes are areas of their
+// own, at any depth: those of other repos' entities, of the repo's root, and of organisational
+// entities, are not.
+func TestEntityDirs(t *testing.T) {
+	raw := t.TempDir()
+	here := "repo"
+	entities := []catalog.Entity{
+		{Ref: "component:web", Category: catalog.Component, Path: "apps/web/catalog-info.yaml", FoundInRepo: "repo", SourceRepo: &here},
+		{Ref: "component:api", Category: catalog.Component, Path: "apps/api/deep/catalog-info.yaml", FoundInRepo: "repo", SourceRepo: &here},
+		{Ref: "component:root", Category: catalog.Component, Path: "catalog-info.yaml", FoundInRepo: "repo", SourceRepo: &here},
+		{Ref: "group:team", Category: catalog.Group, Path: "teams/catalog-info.yaml", FoundInRepo: "repo", SourceRepo: &here},
+		{Ref: "component:other", Category: catalog.Component, Path: "o/catalog-info.yaml", FoundInRepo: "hub", SourceRepo: ptr("other")},
+		{Ref: "component:skeleton", Category: catalog.Component, Path: "tpl/catalog-info.yaml", FoundInRepo: "repo", SourceRepo: &here, IsTemplateSkeleton: true},
+	}
+	if err := writeJSONL(filepath.Join(raw, "catalog", "entities.jsonl"), entities); err != nil {
+		t.Fatal(err)
+	}
+	h := &harness{raw: raw}
+	got, err := h.entityDirs("repo")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := []string{"apps/api/deep", "apps/web"}; !reflect.DeepEqual(got, want) {
+		t.Errorf("entityDirs() = %v, want %v", got, want)
+	}
+	if got, err := (&harness{raw: t.TempDir()}).entityDirs("repo"); err != nil || len(got) != 0 {
+		t.Errorf("entityDirs() without the catalog stage = %v, %v", got, err)
 	}
 }

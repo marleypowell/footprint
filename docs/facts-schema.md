@@ -38,6 +38,7 @@ docs.jsonl         every wiki page and decision record (ADR) of the dataset, wit
 repos.jsonl        the repos, with systems, totals and the kinds of file the user changed
 reviews.jsonl      other people's PRs the user reviewed or commented on, by repo and number
 technologies.jsonl the languages, tools and platforms of the user's landed changes, most active days first
+ownership.jsonl    with the ownership stage: the repos, catalog entities and directories where the user has living lines
 packs/<id>.md      each work item's evidence, bounded, for writing its note
 catalogue.md       every item, oldest first, as standalone text with its note: the record to keep
 todo.txt           the notes to write or fix; empty when there are none
@@ -72,6 +73,7 @@ The raw data's caveats, and what facts does with each:
 | ancestors | Context: they make initiatives and give features their epics, and the user's comments on them count as active days, but they are not the user's issues. |
 | wiki authorship | `share` is the user's versions over all versions. A page is a substantial doc when it has 300 words or more, the user's share is half or more, and they created it or saved 3 versions or more. |
 | ADR authorship | A decision record's versions are the commits that changed its text on the default branch (not a rename or copy that kept it as it was, after the first). A version is the user's when they authored the commit, or an AI agent did in their PR or crediting them; a colleague's commit naming them as co-author is not. `share` and the rule are a page's, from 200 words: a decision record is short by design. Its versions count toward the doc's item; the same commits count toward their changes' items as usual. |
+| living lines | With the ownership stage, blame (`-w -M -C`, at each repo's default-branch head) credits every line of the files the user changed to a commit. A commit is the user's when a change of theirs has it (their own commits, the commits that landed their PRs: a squash by someone else included, and colleagues' and agents' commits in their PRs), and then its lines are that change's `lines.living`: the part of its `lines.added` the default branch still has, as of the head. A commit that only names the user as co-author counts apart (`co_authored_living`), a commit collection took for the user's that no change explains is `unattributed_lines`, and a line blamed to an identity the config matches as the user means the config missed it (`unmatched_self_lines`). `lines_living` counts a change when it lands, as `lines_added` does, so a window's living lines are those of what landed in it, as of today. Blame is not value: a colleague's rename, a formatting pass, or the user's own refactoring takes lines; `survival_percent` is living over added, and always carries this. |
 | technologies | A landed change's technologies come from the paths of its files, excluded files left out, by a compiled-in table: languages by extension (`.ts` TypeScript, `.cs` C#, `.feature` Gherkin), tooling and platforms by the files they read (`Dockerfile` Docker, `.github/workflows/` GitHub Actions, `azure-pipelines*.yml` or `stages/`, `jobs/` and `steps/` of YAML Azure Pipelines, `*.tf` Terraform, `Chart.yaml` or `values*.yaml` Helm, `*.csproj` .NET, `package.json` Node.js, `*.stories.tsx` Storybook). A file can name several (a story is TypeScript and Storybook), or none (Markdown, JSON, images). Co-authored and unlanded changes count toward none. A technology counts a change, and its files' lines, when the change lands; its active days are the user's days on those changes. It is **significant** with 3 active days or more and, for a language, 50 lines added or 3 changes: tools and platforms need the days alone. |
 | reviews | Another person's PR the user reviewed or commented on is a review record (`review+<repo>#<n>`), never the user's change. It counts toward the item of the issue it names that facts trusts (as for a PR), when that item is one of the user's; otherwise toward none: reviews never make items. Its days are the user's active days, but not the item's, so they leave its effort alone. A PR whose author is a bot (by the code host, or by name) counts apart. |
 | time | Every timestamp is parsed (commit dates carry their author's offset) and counted by its UTC day. Windows are whole UTC days, both ends included. |
@@ -117,6 +119,9 @@ totals        the window's Totals
 by_year, by_quarter   [{period: "2024" | "2024q3", totals}]
 team_signals  [{period: "2024q3", boards, projects, teams}]: each [{name, title, issues}] (below)
 technologies  [{name, category, significant, first, last, totals}]: those with active days in the window, as of the window
+ownership     the blame of the repos the user committed to (below), or null without the ownership stage:
+              {as_of_first, as_of_last, repos, files, lines_living, lines_added, survival_percent, co_authored_living,
+              unattributed_lines, unmatched_self_lines, areas_top, areas_major}
 framework     the window's coverage of the framework's criteria (below), or null without context/framework.md:
               {hash, criteria, tagged, untagged, by_status: {none, thin, covered}, problems}
 excluded      {generated, bulk}: {files, added, deleted} left out of line counts (all time)
@@ -136,6 +141,7 @@ Totals, each counting events in the window:
 | `commits_co_authored` | other people's commits naming the user as co-author |
 | `agent_commits` | AI agents' commits in the user's PRs, or crediting them |
 | `lines_added`, `lines_deleted` | in landed changes, without excluded files |
+| `lines_living` | of those added, the lines the default branch still has (living lines, below), in the repos blamed |
 | `repos` | distinct repos with landed changes |
 | `issues_done` | `done_by_me`, by resolution |
 | `issues_worked` | distinct issues the user acted on (a status change, comment, worklog, or a change naming it) or finished |
@@ -210,6 +216,18 @@ In a window's items.jsonl, `totals`, `first`, `last` and `active_days` are the w
   (the user's reviews and comments on it), `reviews` (the user's, by state: `approved`,
   `changes_requested`, `commented`, `dismissed`), `comments`, `words` (in the user's review bodies
   and comments).
+- **ownership**: `id` (`own+<repo>` or `own+<repo>+<path>`, as drafts cite it; a directory ends in
+  `/`, and `(root)` is the files at the top), `kind` (`repo`, `entity`: a directory with a catalog
+  descriptor of the repo's software, or `dir`: the first two levels), `repo`, `path`, `entity`
+  (`{id: ref, title}`), `archived`, `as_of` (the day of the head blamed), `lines` (text lines in the
+  area), `living` (the user's), `share_percent`, `role` (`top` with half the lines or more, `major`
+  with a fifth or more, `contributor` otherwise or below 200 lines: a few lines are too small to
+  own), `others` (the three colleagues with most lines in the files the user changed there, one
+  person per email, whatever its case, without agents, bots or the user's own: `name`, `lines`,
+  `last`), `changes` (the user's changes with living lines in it), `url`. Only areas where the user
+  has living lines are listed. A repo's `ownership` in repos.jsonl is `{as_of, lines, living,
+  share_percent, survival_percent}`, null when it was not blamed. Ownership is left out of packs and
+  their hashes: colleagues' edits would make notes stale for no reason of the user's.
 - **technologies**: `name`, `category` (`language`, `tooling` or `platform`), `significant`, `first`,
   `last` (the user's active days on changes touching it), `totals` (`changes` landed,
   `agent_changes` among them that an AI agent wrote most of, `lines_added`, `lines_deleted` in its
@@ -327,7 +345,8 @@ sha), a doc (`doc+<id>`, `adr+<repo>+<name>`), a review of another person's PR
 
 ## What the facts cannot say
 
-They count what the tools recorded. The user's replies to reviews on their own PRs, reviews on the
+They count what the tools recorded. Blame is a view of where lines stand today, not of who made
+them valuable (it is described under living lines above). The user's replies to reviews on their own PRs, reviews on the
 host repos were migrated from (and before the reviews stage ran, every review), the descriptions of
 migrated PRs, issues the user only commented on, comments on others' pages, and everything outside
 the tools (design talks, incidents, interviews, mentoring) were not collected: their absence is not

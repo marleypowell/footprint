@@ -1,6 +1,6 @@
 ---
 name: footprint
-description: Answers the user's questions about their own past work, fills in their profile (titles, teams), and writes their CV, LinkedIn profile, performance review, promotion case, pay rise case, offboarding snapshot, or a job application (its paper trail, and preparation and debriefs for each interview stage), from the footprint dataset of their commits, PRs, issues, ADRs and wiki pages.
+description: Answers the user's questions about their own past work, fills in their profile (titles, teams), and writes their CV, LinkedIn profile, performance review, promotion case, pay rise case, offboarding snapshot, handover map, or a job application (its paper trail, and preparation and debriefs for each interview stage), from the footprint dataset of their commits, PRs, issues, ADRs and wiki pages.
 ---
 
 # Using the footprint data
@@ -29,6 +29,7 @@ Work from the repo root. Build first when `bin/footprint` is missing or older th
 | a CV or LinkedIn profile | all | `templates/cv.md` |
 | a weekly capture of what the week's work led to | since the last capture | `capture.md` instead of steps 2-6 |
 | an offboarding snapshot | all | `templates/offboarding.md` |
+| a handover map: who else knows what the user knows | all | `templates/handover.md` |
 | a job application: starting one, its news, preparing for or debriefing a stage, where they stand | all | `application.md` instead of steps 2-6 |
 
 ## Steps
@@ -67,7 +68,7 @@ Work from the repo root. Build first when `bin/footprint` is missing or older th
    from the facts, cite the record it belongs to, or keep it and list it for the user as unverified.
    Done when check exits 0 and every warning is fixed or listed.
 6. **Hand over.** Run `bin/footprint -plain check <draft>` for a CV, LinkedIn profile, offboarding
-   snapshot or job application, `-links` for a review, promotion or pay rise case, to write
+   snapshot, handover map or job application, `-links` for a review, promotion or pay rise case, to write
    `<draft>.final.md`. Give the user its path, the unverified numbers, and the open questions of the
    notes it drew on. Save their answers verbatim in `data/context/items/<id>.md`: the next facts run
    adds them to those items' packs, and the notes go stale to take them in.

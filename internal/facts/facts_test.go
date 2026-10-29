@@ -405,8 +405,8 @@ func TestDeterministic(t *testing.T) {
 		}
 		return files
 	}
-	a := write(fixture())
-	shuffled := fixture()
+	a := write(blamed(fixture()))
+	shuffled := blamed(fixture())
 	r := rand.New(rand.NewSource(1))
 	r.Shuffle(len(shuffled.Commits), func(i, j int) { shuffled.Commits[i], shuffled.Commits[j] = shuffled.Commits[j], shuffled.Commits[i] })
 	r.Shuffle(len(shuffled.PRs), func(i, j int) { shuffled.PRs[i], shuffled.PRs[j] = shuffled.PRs[j], shuffled.PRs[i] })
@@ -425,7 +425,7 @@ func TestDeterministic(t *testing.T) {
 			t.Errorf("%s differs when the input is shuffled", name)
 		}
 	}
-	for _, name := range []string{"README.md", "facts.json", "items.jsonl", "packs/ENG-1.md", "windows/2024-01-01_2024-03-31/overview.md", "catalogue.md", "todo.txt", "reviews.jsonl", "technologies.jsonl", "criteria.md", "tags.txt", "windows/2024-01-01_2024-03-31/criteria.md"} {
+	for _, name := range []string{"README.md", "facts.json", "items.jsonl", "packs/ENG-1.md", "windows/2024-01-01_2024-03-31/overview.md", "catalogue.md", "todo.txt", "reviews.jsonl", "technologies.jsonl", "criteria.md", "tags.txt", "windows/2024-01-01_2024-03-31/criteria.md", "ownership.jsonl"} {
 		if _, ok := a[name]; !ok {
 			t.Errorf("no %s", name)
 		}

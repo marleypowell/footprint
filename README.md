@@ -85,7 +85,7 @@ it is not (see [Completeness](#completeness)). Then open `data/raw/index.json`.
 | `reviews` | other people's PRs you reviewed or commented on, with your reviews and comments | GitHub: GraphQL search, ~7 min for 1,700 PRs |
 | `commits` | your commits on any ref | local git, ~30 s |
 | `catalog` | every catalog entity on every default branch | local git only |
-| `ownership` | who wrote the lines the default branch has now, in the files you ever changed | local git blame; a cache makes later runs blame only what changed |
+| `ownership` | who wrote the lines the default branch has now, in the files you ever changed | local git blame, ~11 min cold for 6,000 files; a cache makes later runs ~20 s |
 | `projects` | per-repo `project.json`, docs, decision records (ADRs) you committed to, `data/raw/index.json`, and the issue tracker's projects | local, plus one project listing; indexes `issues/` and `wiki/` too |
 | `verify` | compares with the code host's own commit attribution | GitHub: ~3 min (search rate limits) |
 | `issues` | issues ever assigned to you, or named in your commits and PRs, with comments, history and worklogs, plus the stories, epics and initiatives above them | Jira: one request per issue, a few minutes for thousands; skipped without an `issue_tracker` section |
@@ -230,7 +230,7 @@ bin/footprint check data/drafts/review.md             # citations and numbers in
 
 In Claude Code, the `footprint` skill ([`.claude/skills/footprint/`](.claude/skills/footprint/SKILL.md))
 runs these steps to answer questions about your work, and to write a CV or LinkedIn profile, a
-performance review, a promotion or pay rise case, an offboarding snapshot, or a job
+performance review, a promotion or pay rise case, an offboarding snapshot, a handover map, or a job
 application's paper trail and interview preparation. Its steps only use the CLI and files, so another agent can follow `SKILL.md` too.
 
 | directory | written by | |

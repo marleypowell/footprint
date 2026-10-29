@@ -63,6 +63,9 @@ type Lines struct {
 	ExcludedAdded   int `json:"excluded_added"`
 	ExcludedDeleted int `json:"excluded_deleted"`
 	ExcludedFiles   int `json:"excluded_files"`
+	// Living is how many of the lines the repo's default branch still has, by blame at its head: null
+	// when the repo was not blamed, and for a change that only names the user as co-author
+	Living *int `json:"living"`
 }
 
 // Excluded totals what line counts leave out, by reason.

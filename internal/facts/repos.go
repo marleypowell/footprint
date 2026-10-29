@@ -24,7 +24,9 @@ type Repo struct {
 	Extensions  []Extension `json:"extensions"` // of the files the user's landed changes touched, most lines added first
 	// Technologies are its landed changes', most lines first
 	Technologies []string `json:"technologies"`
-	Items        []string `json:"items"` // the items with most of the user's days in it
+	// Ownership is the blame of its files the user changed; null when it was not blamed
+	Ownership *RepoOwnership `json:"ownership"`
+	Items     []string       `json:"items"` // the items with most of the user's days in it
 }
 
 // Extension is a kind of file the user changed, by extension (or name, for files without one).
@@ -96,6 +98,7 @@ func (f *Facts) buildRepos() {
 			}
 		}
 		r.Technologies = f.techsOf(ids)
+		r.Ownership = f.ownRepos[p.Name]
 		r.Items = f.repoItems(evs)
 		f.Repos = append(f.Repos, r)
 	}

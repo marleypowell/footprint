@@ -1,6 +1,8 @@
 package facts
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -348,4 +350,37 @@ func TestKnownURLs(t *testing.T) {
 	}
 	check(t, "keys of other shapes are not flagged", findings(f, "draft.md", "---\nwindow: all\n---\nUsed UTF-8 over HTTP-2, not ENG-77.\n"),
 		[]string{"4: warning: ENG-77 is not in the dataset (the user was never assigned it, nor named it in git work)"})
+}
+
+// A percentage or multiple is derived, so it passes only as a figure someone stated: the user in
+// their context files, or a record the paragraph cites (an area's share, a doc's). Otherwise it is
+// a warning asking for the numbers it comes from.
+func TestStatedPercentages(t *testing.T) {
+	ctx := t.TempDir()
+	if err := os.WriteFile(filepath.Join(ctx, "profile.md"), []byte("Cut build time by 40%.\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	f := build(t, blamed(fixture()), Inputs{ContextDir: ctx})
+	front := "---\nwindow: all\n---\n"
+	tests := []struct {
+		name, text  string
+		wantDerived bool
+	}{
+		{"the user's own figure", "Build time fell 40%.", false},
+		{"a figure no one stated", "Build time fell 41%.", true},
+		{"a cited record's own percentage", "The API is 63% mine [[own+app+src/]].", false},
+		{"the same percentage without the citation", "The API is 63% mine.", true},
+		{"a multiple no one stated", "It got 97x faster.", true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			derived := false
+			for _, fd := range f.Check("draft.md", front+tt.text+"\n") {
+				derived = derived || strings.Contains(fd.Message, "is derived")
+			}
+			if derived != tt.wantDerived {
+				t.Errorf("Check(%q) derived warning = %v, want %v", tt.text, derived, tt.wantDerived)
+			}
+		})
+	}
 }

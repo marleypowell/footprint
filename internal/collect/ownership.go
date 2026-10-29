@@ -16,6 +16,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/marleypowell/footprint/internal/catalog"
 	"github.com/marleypowell/footprint/internal/filekind"
 	"github.com/marleypowell/footprint/internal/par"
 )
@@ -52,7 +53,8 @@ type IgnoredRev struct {
 	Source string `json:"source"` // repo_file (.git-blame-ignore-revs) or config
 }
 
-// OwnedDir totals the text files under a directory (to two levels; "(root)" for files at the top).
+// OwnedDir totals the text files under a directory: the first two levels, the directories holding a
+// catalog descriptor of the repo's software, at any depth; "(root)" for files at the top.
 type OwnedDir struct {
 	Path  string `json:"path"`
 	Files int    `json:"files"`
@@ -389,6 +391,10 @@ func (h *harness) ownRepo(ctx context.Context, repo Repo) (*Ownership, error) {
 		return nil, err
 	}
 
+	entityDirs, err := h.entityDirs(repo.Name)
+	if err != nil {
+		return nil, err
+	}
 	own := &Ownership{Repo: repo.Name, DefaultBranch: branch, Head: head, HeadAt: deref(isoUTC(headAt)), GeneratedAt: nowISO(),
 		Flags: flags, IgnoredRevs: revs, Dirs: []OwnedDir{}, Files: []OwnedFile{}}
 	dirs := map[string]*OwnedDir{}
@@ -406,7 +412,7 @@ func (h *harness) ownRepo(ctx context.Context, repo Repo) (*Ownership, error) {
 			own.Skipped.Binary.Files++
 		default:
 			own.Lines += info.Lines
-			for _, d := range dirsOf(f.path) {
+			for _, d := range dirsOf(f.path, entityDirs) {
 				if dirs[d] == nil {
 					dirs[d] = &OwnedDir{Path: d}
 				}
@@ -483,16 +489,42 @@ func (h *harness) ownRepo(ctx context.Context, repo Repo) (*Ownership, error) {
 	return own, nil
 }
 
-// dirsOf are the directories a file counts in: its first two levels, or "(root)".
-func dirsOf(p string) []string {
+// entityDirs are the directories, besides the root, that hold a catalog descriptor in the repo that
+// describes software in it: the areas of a monorepo's apps.
+func (h *harness) entityDirs(repo string) ([]string, error) {
+	entities, err := readJSONL[catalog.Entity](filepath.Join(h.raw, "catalog", "entities.jsonl"))
+	if err != nil {
+		return nil, err
+	}
+	dirs := map[string]bool{}
+	for _, e := range entities {
+		if dir := parentDir(e.Path); dir != "" && e.FoundInRepo == repo && deref(e.SourceRepo) == repo &&
+			!e.IsTemplateSkeleton && catalog.DescribesSoftware(e.Category) {
+			dirs[dir] = true
+		}
+	}
+	return sortedKeys(dirs), nil
+}
+
+// dirsOf are the directories a file counts in: its first two levels, or "(root)", and any of extra
+// (directories without a trailing slash) that hold it.
+func dirsOf(p string, extra []string) []string {
 	parts := strings.Split(p, "/")
+	var dirs []string
 	switch len(parts) {
 	case 1:
 		return []string{"(root)"}
 	case 2:
-		return []string{parts[0] + "/"}
+		dirs = []string{parts[0] + "/"}
+	default:
+		dirs = []string{parts[0] + "/", parts[0] + "/" + parts[1] + "/"}
 	}
-	return []string{parts[0] + "/", parts[0] + "/" + parts[1] + "/"}
+	for _, d := range extra {
+		if d = d + "/"; strings.HasPrefix(p, d) && !slices.Contains(dirs, d) {
+			dirs = append(dirs, d)
+		}
+	}
+	return dirs
 }
 
 // ownedFile splits a file's blame into the user's commits and everyone else's.

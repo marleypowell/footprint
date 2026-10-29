@@ -36,7 +36,7 @@ func TestLoad(t *testing.T) {
 	}
 	raw.Index.Repos[0].Dir = "repos/.app"
 	raw.Index.Repos[0].Files = map[string]string{"commits": "repos/.app/commits.jsonl", "prs": "repos/.app/prs.jsonl",
-		"decisions": "repos/.app/decisions.jsonl", "reviews": "repos/.app/reviews.jsonl"}
+		"decisions": "repos/.app/decisions.jsonl", "reviews": "repos/.app/reviews.jsonl", "ownership": "repos/.app/ownership.json"}
 	// a repo without PRs: the index lists no prs file for it
 	lib := commit("l1", "2024-01-02T10:00:00Z", jane, []string{"author", "committer"}, "lib work", func(c *collect.Commit) { c.Repo = "lib" })
 	raw.Index.Repos = append(raw.Index.Repos, collect.IndexRepo{Name: "lib", Dir: "repos/lib", Files: map[string]string{"commits": "repos/lib/commits.jsonl"}})
@@ -51,6 +51,7 @@ func TestLoad(t *testing.T) {
 	write("repos/.app/decisions.jsonl", raw.Decisions, true)
 	write("repos/.app/reviews.jsonl", raw.Reviews, true)
 	write("org/reviews.json", collect.ReviewsSummary{PRs: len(raw.Reviews)}, false)
+	write("repos/.app/ownership.json", blamed(fixture()).Ownership[0], false)
 	write("issues/ENG.jsonl", raw.Issues, true)
 	write("wiki/ENG.jsonl", raw.Pages, true)
 	write("org/issue_projects.json", raw.IssueProjects, false)
@@ -61,6 +62,7 @@ func TestLoad(t *testing.T) {
 	check(t, "loaded", []int{len(got.Projects), len(got.Commits), len(got.PRs), len(got.Decisions), len(got.Issues), len(got.Pages), len(got.IssueProjects), len(got.Reviews)},
 		[]int{2, len(raw.Commits) + 1, len(raw.PRs), len(raw.Decisions), len(raw.Issues), len(raw.Pages), 1, len(raw.Reviews)})
 	check(t, "the reviews stage ran", got.ReviewsRan, true)
+	check(t, "a repo's blame is loaded, a repo without one has none", []any{len(got.Ownership), got.Ownership[0].Repo, len(got.Ownership[0].Files)}, []any{1, "app", 3})
 	if _, err := Load(t.TempDir()); err == nil || !strings.Contains(err.Error(), "no index.json") {
 		t.Errorf("want a clear error without a dataset, got %v", err)
 	}

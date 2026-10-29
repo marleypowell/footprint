@@ -65,6 +65,7 @@ func (f *Facts) Check(path, text string) []Finding {
 		c.window = w
 		c.values = map[int]bool{}
 		c.addTotals(totalsOf(f.events, w))
+		c.addOwnership(f.ownershipSummary(w))
 		c.periods = map[string]Totals{}
 		years, quarters := periods(f.events, w)
 		for _, p := range append(years, quarters...) {
@@ -169,6 +170,16 @@ func (c *checker) addTotals(t Totals) {
 	}
 }
 
+// addOwnership puts the numbers of the blame summary in scope, its percentage among them.
+func (c *checker) addOwnership(s *OwnershipSummary) {
+	if s == nil {
+		return
+	}
+	for _, v := range []int{s.Repos, s.Files, s.LinesLiving, s.LinesAdded, s.SurvivalPercent, s.CoAuthoredLiving, s.AreasTop, s.AreasMajor} {
+		c.values[v] = true
+	}
+}
+
 func (c *checker) addNumbers(text string) {
 	for _, m := range numberRE.FindAllStringSubmatch(text, -1) {
 		if v, ok := parseCount(m[2] + m[4]); ok {
@@ -196,6 +207,7 @@ func (c *checker) itemValues(id string) []int {
 	if d := c.f.docByRef(id); d != nil {
 		vals = append(vals, d.Words, d.Versions, d.MyVersions, d.Share)
 	}
+	vals = append(vals, c.f.areaValues(id)...)
 	if r := c.f.reviews[id]; r != nil {
 		rs := r.Reviews
 		vals = append(vals, rs.Approved+rs.ChangesRequested+rs.Commented+rs.Dismissed, rs.ChangesRequested, r.Comments, r.Words)
@@ -251,7 +263,7 @@ func (c *checker) paragraph(lines []string, idx []int) {
 			id, url := c.f.resolve(ref)
 			switch {
 			case id == "":
-				c.add(i+1, true, "[[%s]] names nothing in the dataset (an item, issue key, repo#PR, repo@sha, doc+id, adr+repo+name, review+repo#PR or evidence+slug)", ref)
+				c.add(i+1, true, "[[%s]] names nothing in the dataset (an item, issue key, repo#PR, repo@sha, doc+id, adr+repo+name, review+repo#PR, own+repo[+path] or evidence+slug)", ref)
 			case c.allowed != nil && !c.allowed[id]:
 				c.add(i+1, true, "[[%s]] is not part of %s's evidence: a note cites only its own item's records", ref, c.note.ID)
 			default:
@@ -343,9 +355,12 @@ func (c *checker) paragraph(lines []string, idx []int) {
 			}
 			approx := approxRE.MatchString(n.text[:start]) || loc[2] < loc[3] // "~", "about", "over"
 			switch {
-			case (suffix == "%" || suffix == "x" || suffix == "×") && !c.values[int(math.Round(v))]:
-				c.add(n.line+1, false, "%q is derived: write the numbers it comes from (120 of 300 commits), or the user's own figure "+
-					"from context/. In %q", got, original[n.line])
+			case suffix == "%" || suffix == "x" || suffix == "×":
+				// derived, so it passes only as a figure someone stated: the user, or a record cited
+				if r := int(math.Round(v)); !c.values[r] && !local[r] {
+					c.add(n.line+1, false, "%q is derived: write the numbers it comes from (120 of 300 commits), or the user's own figure "+
+						"from context/. In %q", got, original[n.line])
+				}
 			case !c.matches(v, suffix, approx, local) &&
 				!(techUnitRE.MatchString(strings.TrimLeft(n.text[end:], " ")) && c.matches(v, suffix, approx, techLocal)):
 				c.add(n.line+1, false, "%q matches no fact in scope (window %s): take it from facts.json or a cited record, "+
@@ -417,7 +432,7 @@ func (c *checker) matches(v float64, suffix string, approx bool, local map[int]b
 		return target != 0 && math.Abs(got-target) <= tol*math.Abs(target)
 	}
 	switch suffix {
-	case "%", "x", "×": // derived: only the user's own figures pass
+	case "%", "x", "×": // derived: only a stated figure passes, which check decides before asking
 		return false
 	case "k", "K":
 		v, approx = v*1000, true
@@ -463,6 +478,9 @@ func (f *Facts) resolve(ref string) (id, link string) {
 	}
 	if r := f.reviews[ref]; r != nil {
 		return r.Ref, r.URL
+	}
+	if a := f.areaByRef(ref); a != nil {
+		return a.ID, a.URL
 	}
 	for _, e := range f.evidenceFiles {
 		if e.Ref == ref {

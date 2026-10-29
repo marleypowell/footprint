@@ -22,6 +22,7 @@ var metrics = []struct{ name, label string }{
 	{"agent_commits", "AI agents' commits in your work"},
 	{"lines_added", "Lines added, landed"},
 	{"lines_deleted", "Lines deleted, landed"},
+	{"lines_living", "Of the lines added, those the default branch still has (repos blamed)"},
 	{"repos", "Repos with landed changes"},
 	{"issues_done", "Issues done by you"},
 	{"issues_worked", "Issues you worked on"},
@@ -117,6 +118,18 @@ func (f *Facts) overview(w Window) []byte {
 		p("\n")
 		if len(fw.Problems) > 0 {
 			p("\n- Problems: %s\n", strings.Join(fw.Problems, "; "))
+		}
+	}
+	if o := s.Ownership; o != nil {
+		p("\n## Ownership\n\nBy blame, as of the repos' heads (%s..%s), in %d repos and the %d files you changed there:\n", o.AsOfFirst, o.AsOfLast, o.Repos, o.Files)
+		p("%d of the %d lines your landed changes added are still in the default branches (%d%%, `lines_living`).\n", o.LinesLiving, o.LinesAdded, o.SurvivalPercent)
+		p("A line goes to whoever changed it last, so a colleague's rename or a reformat takes it, and refactoring your own code\n")
+		p("replaces your lines: the share is where things stand, not a measure of value. ownership.jsonl lists the %d areas with\n", len(f.Areas))
+		p("lines of yours: you are top (half the lines) in %d of them and major (a fifth) in %d, not counting the repos' own.\n", o.AreasTop, o.AreasMajor)
+		if o.CoAuthoredLiving > 0 || o.UnattributedLines > 0 || o.UnmatchedSelfLines > 0 {
+			p("Apart: %d lines of commits naming you as co-author, %d of commits no change of yours explains, %d blamed to an identity\n",
+				o.CoAuthoredLiving, o.UnattributedLines, o.UnmatchedSelfLines)
+			p("your config matches (it was missed: see doctor).\n")
 		}
 	}
 	if len(s.Technologies) > 0 {

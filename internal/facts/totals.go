@@ -20,6 +20,7 @@ type Totals struct {
 	AgentCommits      int `json:"agent_commits"`       // AI agents' commits in the user's PRs, or crediting the user
 	LinesAdded        int `json:"lines_added"`         // in landed changes, generated files and bulk changes left out
 	LinesDeleted      int `json:"lines_deleted"`
+	LinesLiving       int `json:"lines_living"`  // of those added, the lines the default branch still has, in the repos blamed
 	Repos             int `json:"repos"`         // distinct repos with landed changes
 	IssuesDone        int `json:"issues_done"`   // done_by_me, by resolution
 	IssuesWorked      int `json:"issues_worked"` // distinct issues the user acted on
@@ -74,6 +75,7 @@ func totalsOf(events []event, w Window) Totals {
 			t.ChangesLanded++
 			t.LinesAdded += e.added
 			t.LinesDeleted += e.deleted
+			t.LinesLiving += e.living
 			add("repos", e.repo)
 		case evIssueDone:
 			t.IssuesDone++

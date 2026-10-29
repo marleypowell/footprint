@@ -26,6 +26,8 @@ type Summary struct {
 	TeamSignals []TeamSignals `json:"team_signals"`
 	// Technologies are those with the user's activity in the window, as of the window
 	Technologies []TechSummary `json:"technologies"`
+	// Ownership is the blame of the repos the user committed to; null without the ownership stage
+	Ownership *OwnershipSummary `json:"ownership"`
 	// Framework is the window's coverage of context/framework.md's criteria; null without one
 	Framework *FrameworkSummary `json:"framework"`
 	Excluded  Excluded          `json:"excluded"`
@@ -80,6 +82,7 @@ func (f *Facts) Summary(w Window) Summary {
 	s.TeamSignals = f.teamSignals(w)
 	s.Technologies = f.techSummaries(w)
 	s.Framework = f.frameworkSummary(w)
+	s.Ownership = f.ownershipSummary(w)
 	s.Coverage = Coverage{Sources: f.raw.Index.Sources, NotCollected: f.notCollected()}
 	s.Coverage.First, s.Coverage.Last = span(f.events, w)
 	for _, pr := range f.raw.PRs {
@@ -165,6 +168,7 @@ func (f *Facts) Write(dir string, windows ...Window) error {
 	put("repos.jsonl")(jsonl(f.Repos))
 	put("reviews.jsonl")(jsonl(f.Reviews))
 	put("technologies.jsonl")(jsonl(f.Technologies))
+	put("ownership.jsonl")(jsonl(f.Areas))
 	files["overview.md"] = f.overview(All)
 	files["catalogue.md"] = f.catalogue()
 	files["todo.txt"] = f.todo(All)

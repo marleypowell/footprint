@@ -21,6 +21,7 @@ type Facts struct {
 	Items   []*Item   // by first activity, then id
 	Docs    []*Doc    // by creation, then id
 	Reviews []*Review // by repo, then number
+	Areas   []*Area   // the blame's: by repo, then path
 	// Recent, when set before Write, also writes recent/: what to ask the user about for the window
 	Recent *Window
 	// Technologies are by the user's active days with them, then lines added, then name
@@ -38,6 +39,8 @@ type Facts struct {
 	changeOf         map[string]string  // repo@sha of a commit of the user's -> the change it is part of
 	docs             map[string]*Doc    // by page id
 	reviews          map[string]*Review // by ref
+	own              *ownAgg
+	ownRepos         map[string]*RepoOwnership // by repo, for the repos blamed
 	technologies     map[string]*Technology
 	framework        *framework  // context/framework.md; nil without one
 	evidenceFiles    []*Evidence // context/evidence/<slug>.md
@@ -84,6 +87,7 @@ func Build(raw *Raw, in Inputs) (*Facts, error) {
 	}
 	f.buildIssues()
 	f.buildChanges()
+	f.buildOwnership()
 	f.buildDocs()
 	f.buildItems()
 	f.buildTechnologies()
@@ -110,6 +114,7 @@ type event struct {
 	repo    string
 	added   int // lines, for evLanded
 	deleted int
+	living  int    // of those, the lines the default branch still has, for evLanded
 	who     string // a reviewed PR's author
 }
 
