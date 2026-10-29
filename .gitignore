@@ -1,6 +1,5 @@
 # personal: the identity config and everything collected about that person (private-repo content)
 /config.json
-/careers.json
 /data/
 
 # tokens for Jira and Confluence (see .env.example)

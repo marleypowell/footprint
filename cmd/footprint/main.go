@@ -80,8 +80,8 @@ or tokens):
               -from..-to, -repo, -item and -kind; one per line on stdout: kind, id, item,
               first..last, title, link (tab-separated)
 
-Several employers (careers.json, README.md: Several employers):
-  employers   the datasets careers.json lists, by when you started there: id, employer, months,
+Several employers (data/careers.json, README.md: Several employers):
+  employers   the datasets data/careers.json lists, by when you started there: id, employer, months,
               what is on disk (full, facts, context), frozen, directory (tab-separated)
   -employer <id> runs any command on that employer's dataset: it sets -config, -data, -cache, -env,
               -facts, -notes and -context, unless given; collecting into a frozen one is refused
@@ -122,7 +122,7 @@ func main() {
 	flags.StringVar(&fo.by, "by", "", "count: also break the totals down by year, quarter, repo or item")
 	flags.StringVar(&fo.kind, "kind", "", "search: only these kinds of record, comma-separated: item, issue, change, doc, review, area")
 	var careersPath, employer string
-	flags.StringVar(&careersPath, "careers", "careers.json", "the employers' datasets (README.md: Several employers)")
+	flags.StringVar(&careersPath, "careers", "data/careers.json", "the employers' datasets (README.md: Several employers)")
 	flags.StringVar(&employer, "employer", "", "run on this employer's dataset, from the careers file: it sets the path flags not given")
 	var doctorJSON bool
 	flags.BoolVar(&doctorJSON, "json", false, "doctor: write the report as JSON")

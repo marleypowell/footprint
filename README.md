@@ -251,8 +251,8 @@ application's paper trail and interview preparation. Its steps only use the CLI 
 ## Several employers
 
 The dataset under `data/` is one job's. To keep past jobs' datasets beside it, and later make one
-career's documents from them all, list them in `careers.json` (personal, git-ignored), beside
-`config.json`:
+career's documents from them all, list them in `data/careers.json`, with the datasets (personal, like
+the rest of `data/`; `-careers` names another file). Its paths are from the working directory:
 
 ```json
 {"employers": [
@@ -279,7 +279,7 @@ alone) or `context` (neither). `-employer <id>` runs any command on one: it sets
 
 ```sh
 bin/footprint -employer acme facts       # the facts of a past job, from its raw data
-bin/footprint -employer globex all       # collect the current one, as without careers.json
+bin/footprint -employer globex all       # collect the current one, as without data/careers.json
 ```
 
 ## Development
@@ -311,7 +311,7 @@ internal/facts/         aggregation: the counting rules, work items, packs, note
 internal/doctor/        completeness checks over a collected dataset
 internal/filekind/      written vs generated or vendored files
 internal/tech/          technologies named from file paths
-internal/careers/       careers.json: the employers' datasets, their paths and kinds
+internal/careers/       data/careers.json: the employers' datasets, their paths and kinds
 docs/data-schema.md     the output contract (compiled in; written to data/raw/README.md)
 docs/facts-schema.md    the facts contract (compiled in; written to data/facts/README.md)
 .claude/skills/footprint/  the skill an agent follows to use the data
