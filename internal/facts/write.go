@@ -17,13 +17,14 @@ import (
 
 // Summary is facts.json: the numbers for one window, by name, and what they leave out.
 type Summary struct {
-	PackVersion int           `json:"pack_version"`
-	Window      string        `json:"window"` // "all" or "YYYY-MM-DD..YYYY-MM-DD"
-	Coverage    Coverage      `json:"coverage"`
-	Totals      Totals        `json:"totals"`
-	ByYear      []Period      `json:"by_year"`
-	ByQuarter   []Period      `json:"by_quarter"`
-	TeamSignals []TeamSignals `json:"team_signals"`
+	FactsVersion int           `json:"facts_version"` // of this directory's files: what LoadStored can read
+	PackVersion  int           `json:"pack_version"`
+	Window       string        `json:"window"` // "all" or "YYYY-MM-DD..YYYY-MM-DD"
+	Coverage     Coverage      `json:"coverage"`
+	Totals       Totals        `json:"totals"`
+	ByYear       []Period      `json:"by_year"`
+	ByQuarter    []Period      `json:"by_quarter"`
+	TeamSignals  []TeamSignals `json:"team_signals"`
 	// Technologies are those with the user's activity in the window, as of the window
 	Technologies []TechSummary `json:"technologies"`
 	// Ownership is the blame of the repos the user committed to; null without the ownership stage
@@ -41,6 +42,8 @@ type Coverage struct {
 	Last         string          `json:"last"`
 	PRsFrom      string          `json:"prs_from"` // the first PR record: earlier PRs show only as migrated_prs_merged
 	NotCollected []string        `json:"not_collected"`
+	ProjectKeys  []string        `json:"project_keys"` // the issue tracker's, for check to tell keys from look-alikes
+	Org          string          `json:"org"`          // the code host's org (or user account) the dataset is of
 }
 
 // NoteCounts count the window's items by note state.
@@ -77,13 +80,13 @@ func (f *Facts) notCollected() []string {
 
 // Summary is the window's facts.json.
 func (f *Facts) Summary(w Window) Summary {
-	s := Summary{PackVersion: PackVersion, Window: w.String(), Totals: totalsOf(f.events, w), Excluded: f.Excluded}
+	s := Summary{FactsVersion: FactsVersion, PackVersion: PackVersion, Window: w.String(), Totals: totalsOf(f.events, w), Excluded: f.Excluded}
 	s.ByYear, s.ByQuarter = periods(f.events, w)
 	s.TeamSignals = f.teamSignals(w)
 	s.Technologies = f.techSummaries(w)
 	s.Framework = f.frameworkSummary(w)
 	s.Ownership = f.ownershipSummary(w)
-	s.Coverage = Coverage{Sources: f.raw.Index.Sources, NotCollected: f.notCollected()}
+	s.Coverage = Coverage{Sources: f.raw.Index.Sources, NotCollected: f.notCollected(), ProjectKeys: f.projectKeyList(), Org: f.raw.Index.Org}
 	s.Coverage.First, s.Coverage.Last = span(f.events, w)
 	for _, pr := range f.raw.PRs {
 		if d := dayOf(pr.CreatedAt); d != "" && (s.Coverage.PRsFrom == "" || d < s.Coverage.PRsFrom) {
@@ -169,6 +172,7 @@ func (f *Facts) Write(dir string, windows ...Window) error {
 	put("reviews.jsonl")(jsonl(f.Reviews))
 	put("technologies.jsonl")(jsonl(f.Technologies))
 	put("ownership.jsonl")(jsonl(f.Areas))
+	put("events.jsonl")(jsonl(f.storedEvents()))
 	files["overview.md"] = f.overview(All)
 	files["catalogue.md"] = f.catalogue()
 	files["todo.txt"] = f.todo(All)

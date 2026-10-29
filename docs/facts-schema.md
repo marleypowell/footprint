@@ -39,6 +39,8 @@ repos.jsonl        the repos, with systems, totals and the kinds of file the use
 reviews.jsonl      other people's PRs the user reviewed or commented on, by repo and number
 technologies.jsonl the languages, tools and platforms of the user's landed changes, most active days first
 ownership.jsonl    with the ownership stage: the repos, catalog entities and directories where the user has living lines
+events.jsonl       every event the totals count: what check reads back once the raw data is gone
+frozen.json        once frozen (footprint freeze): when, and every other file's SHA-256
 packs/<id>.md      each work item's evidence, bounded, for writing its note
 catalogue.md       every item, oldest first, as standalone text with its note: the record to keep
 todo.txt           the notes to write or fix; empty when there are none
@@ -112,9 +114,12 @@ the versions they saved, or an ADR's commits). XL is 31 days or more, L 11-30, M
 ## facts.json
 
 ```
+facts_version the version of this directory's files: which a reader of stored facts can read
 pack_version  the version of what packs hold; a new one makes every note stale once
 window        "all", or "YYYY-MM-DD..YYYY-MM-DD"
-coverage      sources; first and last day counted; prs_from (the first PR record); not_collected
+coverage      sources; first and last day counted; prs_from (the first PR record); not_collected;
+              project_keys (the tracker's, old ones included: what check tells real keys from look-alikes by);
+              org (the code host's org, or user account, the dataset is of)
 totals        the window's Totals
 by_year, by_quarter   [{period: "2024" | "2024q3", totals}]
 team_signals  [{period: "2024q3", boards, projects, teams}]: each [{name, title, issues}] (below)
@@ -409,6 +414,21 @@ area). An area's `title` is where it is and the user's role there: `pay/client/,
 in pay/api/, major` for a catalog entity's.
 `first..last` is the user's activity on it in the window, empty for none. Lines are by `first`
 (records with no activity last), then kind in the order of the table, then id.
+
+## Stored facts and frozen records
+
+A past job's dataset can be kept as its facts alone, once access to the employer's tools has gone
+(`README.md`: Several employers). `footprint check` reads a facts directory back when its dataset
+has no raw data, and gives the same findings as from the raw data: the events in `events.jsonl`
+give every window's and period's totals, and the JSONL files every record, citation and link. The
+one difference: a technology's totals are kept for all time and by calendar year, so a draft over
+another window has none of a technology's numbers in scope. A directory of a `facts_version` outside
+the range a footprint reads is refused, as is one written before `events.jsonl` (version 1).
+
+`footprint freeze` builds the facts a last time and writes `frozen.json`: `frozen_at`, `dataset`,
+`facts_version`, `pack_version`, `packs` (kept or not) and `files` (each file's "/"-separated path
+and SHA-256). Reading a frozen directory back checks every hash first: a file changed, gone or added
+since is an error, as the record is no longer the one frozen.
 
 ## What the facts cannot say
 

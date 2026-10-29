@@ -272,7 +272,10 @@ func (f *Facts) techValues(text string, ws []Window) []int {
 			continue
 		}
 		for _, w := range ws {
-			tt := f.techTotals(t.Name, w)
+			tt, ok := f.techTotalsIn(t, w)
+			if !ok {
+				continue
+			}
 			vals = append(vals, tt.Changes, tt.AgentChanges, tt.LinesAdded, tt.LinesDeleted, tt.Files, tt.ActiveDays, tt.Repos)
 		}
 	}
@@ -311,4 +314,21 @@ func namesTech(text, name string) bool {
 
 func isNameChar(b byte) bool {
 	return b >= 'a' && b <= 'z' || b >= 'A' && b <= 'Z' || b >= '0' && b <= '9' || b == '#' || b == '+' || b == '_'
+}
+
+// techTotalsIn is a technology's totals over w. Stored facts keep them for all time and by calendar
+// year only: for any other window there are none.
+func (f *Facts) techTotalsIn(t *Technology, w Window) (TechTotals, bool) {
+	if !f.stored {
+		return f.techTotals(t.Name, w), true
+	}
+	if w.IsAll() {
+		return t.Totals, true
+	}
+	for _, p := range t.ByYear {
+		if y, err := strconv.Atoi(p.Period); err == nil && yearWindow(y) == w {
+			return p.Totals, true
+		}
+	}
+	return TechTotals{}, false
 }

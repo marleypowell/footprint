@@ -48,6 +48,18 @@ func (o factsOptions) build(dataDir string) (*facts.Facts, error) {
 	return facts.Build(raw, facts.Inputs{NotesDir: o.notes, ContextDir: o.context})
 }
 
+// buildOrStored builds the facts from the raw data, or, for a dataset without any (a past job's,
+// kept as its facts alone), reads back the facts directory.
+func (o factsOptions) buildOrStored(dataDir string) (*facts.Facts, error) {
+	if _, err := os.Stat(filepath.Join(dataDir, "index.json")); err != nil {
+		if _, err := os.Stat(filepath.Join(o.dir, "facts.json")); err == nil {
+			logx.Printf("check: %s has no raw data; checking against the stored facts in %s", dataDir, o.dir)
+			return facts.LoadStored(o.dir, facts.Inputs{NotesDir: o.notes, ContextDir: o.context})
+		}
+	}
+	return o.build(dataDir)
+}
+
 // runFacts writes the facts, and a window's view when -from and -to say one.
 func runFacts(dataDir string, o factsOptions) error {
 	var windows []facts.Window
@@ -98,7 +110,7 @@ func runCheck(dataDir string, o factsOptions, files []string) error {
 	if o.plain && o.links {
 		return errors.New("check: -plain or -links, not both")
 	}
-	f, err := o.build(dataDir)
+	f, err := o.buildOrStored(dataDir)
 	if err != nil {
 		return err
 	}

@@ -1,4 +1,4 @@
-// Package careers reads careers.json: the datasets of the user's employers, one per job (or per
+// Package careers reads careers.json: the user's datasets, one per job (or per
 // org at one job), so that the CLI can run on any of them and a career view can take them
 // together. Without the file nothing changes: today's single dataset under data/ is a career of one.
 package careers
@@ -16,7 +16,7 @@ import (
 	"time"
 )
 
-// Reserved is the id of the career-wide view; no employer may take it.
+// Reserved is the id of the career-wide view; no dataset may take it.
 const Reserved = "career"
 
 // Kinds of dataset, by what is on disk.
@@ -31,24 +31,26 @@ const DefaultRoot = "data"
 
 // File is careers.json.
 type File struct {
-	Employers []Employer `json:"employers"`
+	Datasets []Dataset `json:"datasets"`
 }
 
-// Employer is one dataset: an employer, or one org at an employer, with the months the user was
-// there and where its files are.
-type Employer struct {
-	ID       string `json:"id"`       // lower case, digits and -: the prefix of its citations (acme:PAY-62)
-	Employer string `json:"employer"` // the name documents use
-	From     string `json:"from"`     // YYYY-MM
-	To       string `json:"to"`       // YYYY-MM; empty while the user is still there
-	Root     string `json:"root"`     // the dataset's directory (raw/, facts/, notes/, context/, drafts/); empty for none
-	Config   string `json:"config"`   // its config file; defaults below
-	Cache    string `json:"cache"`    // its mirrors and run state
-	Env      string `json:"env"`      // its tokens file
-	Frozen   bool   `json:"frozen"`   // a past employer's: never collected again
+// Dataset is one employer's work (or one org's, at an employer), with the months the user was there
+// and where its files are; or, marked personal, the user's own projects, which no months bound and
+// no employer owns.
+type Dataset struct {
+	ID       string `json:"id"`                 // lower case, digits and -: the prefix of its citations (acme:PAY-62)
+	Employer string `json:"employer"`           // the name documents use: the employer, or "Personal projects"
+	Personal bool   `json:"personal,omitempty"` // the user's own projects, not a job
+	From     string `json:"from,omitempty"`     // YYYY-MM; a personal dataset's may be left out
+	To       string `json:"to,omitempty"`       // YYYY-MM; empty while the user is still there
+	Root     string `json:"root,omitempty"`     // the dataset's directory (raw/, facts/, notes/, context/, drafts/); empty for none
+	Config   string `json:"config,omitempty"`   // its config file; defaults below
+	Cache    string `json:"cache,omitempty"`    // its mirrors and run state
+	Env      string `json:"env,omitempty"`      // its tokens file
+	Frozen   bool   `json:"frozen,omitempty"`   // a past job's record: never collected again; never a personal dataset
 }
 
-// Paths are the files of an employer's dataset.
+// Paths are the files of a dataset.
 type Paths struct {
 	Config, Env, Data, Cache, Facts, Notes, Context, Drafts string
 }
@@ -75,7 +77,7 @@ func Exists(path string) bool {
 }
 
 // Parse reads careers.json and checks it: every id well formed, unreserved and unique, every
-// employer named, months in order, and no two datasets sharing a directory, config, cache or
+// dataset named, months in order, and no two datasets sharing a directory, config, cache or
 // tokens file.
 func Parse(data []byte) (*File, error) {
 	var f File
@@ -84,8 +86,8 @@ func Parse(data []byte) (*File, error) {
 	if err := dec.Decode(&f); err != nil {
 		return nil, fmt.Errorf("decoding: %w", err)
 	}
-	if len(f.Employers) == 0 {
-		return nil, errors.New("no employers")
+	if len(f.Datasets) == 0 {
+		return nil, errors.New("no datasets")
 	}
 	var errs []error
 	seen := map[string]map[string]string{"id": {}, "root": {}, "config": {}, "cache": {}, "env": {}}
@@ -102,7 +104,7 @@ func Parse(data []byte) (*File, error) {
 		}
 		seen[what][value] = id
 	}
-	for _, e := range f.Employers {
+	for _, e := range f.Datasets {
 		switch {
 		case !idRE.MatchString(e.ID):
 			errs = append(errs, fmt.Errorf("id %q: want lower case letters, digits and -", e.ID))
@@ -110,10 +112,13 @@ func Parse(data []byte) (*File, error) {
 			errs = append(errs, fmt.Errorf("id %q is reserved for the career view", e.ID))
 		}
 		if strings.TrimSpace(e.Employer) == "" {
-			errs = append(errs, fmt.Errorf("%s: employer is missing", e.ID))
+			errs = append(errs, fmt.Errorf("%s: employer is missing (the name documents use)", e.ID))
+		}
+		if e.Personal && e.Frozen {
+			errs = append(errs, fmt.Errorf("%s: a personal dataset is never frozen: it is no past job's record", e.ID))
 		}
 		from, errFrom := time.Parse("2006-01", e.From)
-		if errFrom != nil {
+		if errFrom != nil && !(e.Personal && e.From == "") {
 			errs = append(errs, fmt.Errorf("%s: from %q: want YYYY-MM", e.ID, e.From))
 		}
 		if e.To != "" {
@@ -143,23 +148,23 @@ func Parse(data []byte) (*File, error) {
 	return &f, nil
 }
 
-// Get is the employer with the id.
-func (f *File) Get(id string) (*Employer, error) {
-	ids := make([]string, 0, len(f.Employers))
-	for i := range f.Employers {
-		if f.Employers[i].ID == id {
-			return &f.Employers[i], nil
+// Get is the dataset with the id.
+func (f *File) Get(id string) (*Dataset, error) {
+	ids := make([]string, 0, len(f.Datasets))
+	for i := range f.Datasets {
+		if f.Datasets[i].ID == id {
+			return &f.Datasets[i], nil
 		}
-		ids = append(ids, f.Employers[i].ID)
+		ids = append(ids, f.Datasets[i].ID)
 	}
-	return nil, fmt.Errorf("no employer %q in the careers file (it has %s)", id, strings.Join(ids, ", "))
+	return nil, fmt.Errorf("no dataset %q in the careers file (it has %s)", id, strings.Join(ids, ", "))
 }
 
-// FrozenAt is the frozen employer whose dataset is dir (its raw/ or its root), if any.
-func (f *File) FrozenAt(dir string) *Employer {
+// FrozenAt is the frozen dataset whose directory is dir (its raw/ or its root), if any.
+func (f *File) FrozenAt(dir string) *Dataset {
 	dir = filepath.Clean(dir)
-	for i := range f.Employers {
-		e := &f.Employers[i]
+	for i := range f.Datasets {
+		e := &f.Datasets[i]
 		if e.Frozen && e.Root != "" && (dir == filepath.Clean(e.Root) || dir == filepath.Clean(e.Paths().Data)) {
 			return e
 		}
@@ -167,10 +172,10 @@ func (f *File) FrozenAt(dir string) *Employer {
 	return nil
 }
 
-// Paths are where an employer's files are. The dataset at data/ keeps the paths it has without
+// Paths are where a dataset's files are. The dataset at data/ keeps the paths it has without
 // careers.json (config.json, .env and cache/ beside it); any other root holds its own config and
 // tokens, and its mirrors go under cache/<id>. Set config, cache or env to put them elsewhere.
-func (e Employer) Paths() Paths {
+func (e Dataset) Paths() Paths {
 	if e.Root == "" {
 		return Paths{}
 	}
@@ -194,8 +199,8 @@ func (e Employer) Paths() Paths {
 	return p
 }
 
-// Kind is what the employer's dataset holds, by what is on disk.
-func (e Employer) Kind() string {
+// Kind is what the dataset holds, by what is on disk.
+func (e Dataset) Kind() string {
 	if e.Root == "" {
 		return KindContext
 	}
@@ -214,10 +219,65 @@ func isDir(p string) bool {
 	return err == nil && info.IsDir()
 }
 
-// Ordered are the employers by when the user started, then id: a career's order.
-func (f *File) Ordered() []Employer {
-	out := slices.Clone(f.Employers)
-	slices.SortStableFunc(out, func(a, b Employer) int {
+// SetFrozen marks a dataset frozen: it is a past job's record from now on.
+func (f *File) SetFrozen(id string) error {
+	e, err := f.Get(id)
+	if err != nil {
+		return err
+	}
+	if e.Root == "" {
+		return fmt.Errorf("%s has no dataset to freeze", id)
+	}
+	if e.Personal {
+		return fmt.Errorf("%s is personal: only a past job's dataset is frozen", id)
+	}
+	e.Frozen = true
+	return nil
+}
+
+// Save writes the careers file, one dataset per line, as it reads best by hand.
+func (f *File) Save(path string) error {
+	var b strings.Builder
+	b.WriteString("{\"datasets\": [\n")
+	for i, e := range f.Datasets {
+		line, err := json.Marshal(e)
+		if err != nil {
+			return err
+		}
+		b.WriteString("  " + string(line))
+		if i < len(f.Datasets)-1 {
+			b.WriteString(",")
+		}
+		b.WriteString("\n")
+	}
+	b.WriteString("]}\n")
+	if _, err := Parse([]byte(b.String())); err != nil {
+		return fmt.Errorf("not saving %s: %w", path, err)
+	}
+	tmp := path + ".tmp"
+	if err := os.WriteFile(tmp, []byte(b.String()), 0o644); err != nil {
+		return err
+	}
+	return os.Rename(tmp, path)
+}
+
+// Ordered are the jobs by when the user started, then id, and then the personal datasets, dated
+// ones first: a career's order.
+func (f *File) Ordered() []Dataset {
+	out := slices.Clone(f.Datasets)
+	slices.SortStableFunc(out, func(a, b Dataset) int {
+		if a.Personal != b.Personal {
+			if a.Personal {
+				return 1
+			}
+			return -1
+		}
+		if (a.From == "") != (b.From == "") { // undated last
+			if a.From == "" {
+				return 1
+			}
+			return -1
+		}
 		if a.From != b.From {
 			return strings.Compare(a.From, b.From)
 		}

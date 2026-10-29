@@ -129,6 +129,7 @@ func (f *Facts) buildOwnership() {
 	slices.SortFunc(f.Areas, func(a, b *Area) int { // by repo, the repo's own area first, then by path
 		return cmp.Or(cmp.Compare(a.Repo, b.Repo), cmp.Compare(b2i(a.Kind != "repo"), b2i(b.Kind != "repo")), cmp.Compare(a.Path, b.Path))
 	})
+	f.ownBase = f.ownershipBase()
 }
 
 // ownRepo reads one repo's blame.
@@ -275,6 +276,24 @@ func (f *Facts) ownRepo(o *collect.Ownership) {
 // ownershipSummary is the window's: the blame as of the repos' heads, and the lines living of the
 // changes that landed in the window.
 func (f *Facts) ownershipSummary(w Window) *OwnershipSummary {
+	if f.ownBase == nil {
+		return nil
+	}
+	s := *f.ownBase
+	s.LinesAdded, s.LinesLiving = 0, 0
+	for _, c := range f.Changes {
+		if _, blamed := f.ownRepos[c.Repo]; !blamed || c.Class == CoAuthor || !c.Landed || !w.Contains(c.at) {
+			continue
+		}
+		s.LinesAdded += c.Lines.Added
+		s.LinesLiving += deref(c.Lines.Living)
+	}
+	s.SurvivalPercent = pct(s.LinesLiving, s.LinesAdded)
+	return &s
+}
+
+// ownershipBase is the summary's part that does not depend on a window: the blame as of the heads.
+func (f *Facts) ownershipBase() *OwnershipSummary {
 	if len(f.raw.Ownership) == 0 {
 		return nil
 	}
@@ -286,14 +305,6 @@ func (f *Facts) ownershipSummary(w Window) *OwnershipSummary {
 		}
 		s.AsOfLast = max(s.AsOfLast, h)
 	}
-	for _, c := range f.Changes {
-		if _, blamed := f.ownRepos[c.Repo]; !blamed || c.Class == CoAuthor || !c.Landed || !w.Contains(c.at) {
-			continue
-		}
-		s.LinesAdded += c.Lines.Added
-		s.LinesLiving += deref(c.Lines.Living)
-	}
-	s.SurvivalPercent = pct(s.LinesLiving, s.LinesAdded)
 	for _, a := range f.Areas {
 		if a.Kind == "repo" {
 			continue

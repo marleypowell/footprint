@@ -13,6 +13,7 @@ import (
 	"slices"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/marleypowell/footprint/internal/collect"
 	"github.com/marleypowell/footprint/internal/envfile"
@@ -81,10 +82,14 @@ or tokens):
               first..last, title, link (tab-separated)
 
 Several employers (data/careers.json, README.md: Several employers):
-  employers   the datasets data/careers.json lists, by when you started there: id, employer, months,
+  datasets    the datasets data/careers.json lists, the jobs by when you started, then personal ones: id, employer, months,
               what is on disk (full, facts, context), frozen, directory (tab-separated)
-  -employer <id> runs any command on that employer's dataset: it sets -config, -data, -cache, -env,
-              -facts, -notes and -context, unless given; collecting into a frozen one is refused
+  -dataset <id> runs any command on that dataset: it sets -config, -data, -cache, -env,
+              -facts, -notes and -context, unless given; collecting into a frozen one, or rebuilding
+              its facts, is refused, and check reads its stored facts once its raw data is gone
+  freeze      -dataset <id>: keep a past job's facts as its record: build them a last time, hash
+              them into <facts>/frozen.json, and mark it frozen in the careers file; -drop-packs
+              and -drop-raw then remove the packs or the raw data
 
 The code host, catalog, issue tracker and wiki are set in the config (code_host, catalog,
 issue_tracker, wiki; the last two are optional); supported: github, backstage, jira, confluence.
@@ -121,9 +126,12 @@ func main() {
 	flags.StringVar(&fo.tech, "tech", "", "count: a technology's totals (by name or alias: TS, Golang) instead of the user's")
 	flags.StringVar(&fo.by, "by", "", "count: also break the totals down by year, quarter, repo or item")
 	flags.StringVar(&fo.kind, "kind", "", "search: only these kinds of record, comma-separated: item, issue, change, doc, review, area")
-	var careersPath, employer string
-	flags.StringVar(&careersPath, "careers", "data/careers.json", "the employers' datasets (README.md: Several employers)")
-	flags.StringVar(&employer, "employer", "", "run on this employer's dataset, from the careers file: it sets the path flags not given")
+	var careersPath, datasetID string
+	flags.StringVar(&careersPath, "careers", "data/careers.json", "the datasets: one per job, and personal projects (README.md: Several employers)")
+	flags.StringVar(&datasetID, "dataset", "", "run on this dataset, from the careers file: it sets the path flags not given")
+	var fz freezeOptions
+	flags.BoolVar(&fz.dropRaw, "drop-raw", false, "freeze: then remove the raw data, keeping the facts alone")
+	flags.BoolVar(&fz.dropPacks, "drop-packs", false, "freeze: then remove the packs (notes can no longer be revised)")
 	var doctorJSON bool
 	flags.BoolVar(&doctorJSON, "json", false, "doctor: write the report as JSON")
 	flags.Usage = func() {
@@ -149,7 +157,7 @@ func main() {
 
 	set := map[string]bool{}
 	flags.Visit(func(f *flag.Flag) { set[f.Name] = true })
-	emp, err := applyEmployer(careersPath, employer, set, &opts, &fo, &envPath)
+	emp, err := applyDataset(careersPath, datasetID, set, &opts, &fo, &envPath)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "footprint:", err)
 		os.Exit(1)
@@ -172,7 +180,14 @@ func main() {
 	case "facts":
 		err = errors.New("run facts on its own")
 		if len(stages) == 1 {
-			err = runFacts(opts.DataDir, fo)
+			if err = refuseFrozen(careersPath, emp, opts.DataDir); err == nil {
+				err = runFacts(opts.DataDir, fo)
+			}
+		}
+	case "freeze":
+		err = errors.New("run freeze on its own")
+		if len(stages) == 1 {
+			err = runFreeze(careersPath, emp, opts, fo, fz, time.Now())
 		}
 	case "check":
 		err = runCheck(opts.DataDir, fo, stages[1:])
@@ -180,10 +195,10 @@ func main() {
 		err = runCount(opts.DataDir, fo, stages[1:])
 	case "search":
 		err = runSearch(opts.DataDir, fo, stages[1:])
-	case "employers":
-		err = errors.New("run employers on its own")
+	case "datasets":
+		err = errors.New("run datasets on its own")
 		if len(stages) == 1 {
-			err = runEmployers(os.Stdout, careersPath)
+			err = runDatasets(os.Stdout, careersPath)
 		}
 	case "doctor":
 		err = errors.New("run doctor on its own")

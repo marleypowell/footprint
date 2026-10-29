@@ -40,6 +40,8 @@ type Facts struct {
 	docs             map[string]*Doc    // by page id
 	reviews          map[string]*Review // by ref
 	own              *ownAgg
+	ownBase          *OwnershipSummary         // the blame summary's part no window changes; nil without the ownership stage
+	stored           bool                      // loaded from a facts directory (LoadStored), not built from raw data
 	ownRepos         map[string]*RepoOwnership // by repo, for the repos blamed
 	technologies     map[string]*Technology
 	framework        *framework  // context/framework.md; nil without one

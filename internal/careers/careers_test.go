@@ -10,7 +10,7 @@ import (
 	"testing"
 )
 
-const good = `{"employers": [
+const good = `{"datasets": [
   {"id": "globex", "employer": "Globex", "from": "2022-09", "root": "data"},
   {"id": "acme", "employer": "Acme Ltd", "from": "2019-03", "to": "2022-08", "root": "data/acme", "frozen": true},
   {"id": "initech", "employer": "Initech", "from": "2015-01", "to": "2019-02"}
@@ -21,23 +21,23 @@ func TestParse(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(f.Employers) != 3 || f.Employers[1].ID != "acme" || !f.Employers[1].Frozen {
-		t.Errorf("Parse() = %+v", f.Employers)
+	if len(f.Datasets) != 3 || f.Datasets[1].ID != "acme" || !f.Datasets[1].Frozen {
+		t.Errorf("Parse() = %+v", f.Datasets)
 	}
 }
 
 // A careers file is refused, with every problem named at once, when an id is malformed, reserved
-// or taken twice, an employer has no name, a month is malformed or out of order, two datasets
+// or taken twice, a dataset has no name, a month is malformed or out of order, two datasets
 // would share a directory, config, cache or tokens file, or an entry without a dataset sets paths.
 func TestParseRefuses(t *testing.T) {
-	entry := func(fields string) string { return `{"employers": [` + fields + `]}` }
+	entry := func(fields string) string { return `{"datasets": [` + fields + `]}` }
 	tests := []struct {
 		name, text string
 		want       []string // in the error
 	}{
 		{"not JSON", `{`, []string{"decoding"}},
 		{"an unknown field", entry(`{"id": "a", "employer": "A", "from": "2020-01", "rot": "x"}`), []string{`unknown field "rot"`}},
-		{"no employers", `{"employers": []}`, []string{"no employers"}},
+		{"no datasets", `{"datasets": []}`, []string{"no datasets"}},
 		{"a malformed id", entry(`{"id": "Acme Ltd", "employer": "A", "from": "2020-01"}`), []string{`id "Acme Ltd"`}},
 		{"the reserved id", entry(`{"id": "career", "employer": "A", "from": "2020-01"}`), []string{"reserved"}},
 		{"an id twice", entry(`{"id": "a", "employer": "A", "from": "2020-01"}, {"id": "a", "employer": "B", "from": "2021-01"}`), []string{"share the id a"}},
@@ -49,6 +49,7 @@ func TestParseRefuses(t *testing.T) {
 		{"a shared cache", entry(`{"id": "a", "employer": "A", "from": "2020-01", "root": "data"}, {"id": "b", "employer": "B", "from": "2021-01", "root": "data/b", "cache": "cache"}`),
 			[]string{"share the cache cache"}},
 		{"paths without a dataset", entry(`{"id": "a", "employer": "A", "from": "2020-01", "frozen": true}`), []string{"need a root"}},
+		{"a job with no months", entry(`{"id": "a", "employer": "A"}`), []string{`from ""`}},
 		{"two problems, both named", entry(`{"id": "Bad", "employer": "", "from": "2020-01"}`), []string{`id "Bad"`, "employer is missing"}},
 	}
 	for _, tt := range tests {
@@ -71,21 +72,21 @@ func TestParseRefuses(t *testing.T) {
 func TestPaths(t *testing.T) {
 	tests := []struct {
 		name string
-		e    Employer
+		e    Dataset
 		want Paths
 	}{
-		{"today's dataset", Employer{ID: "globex", Root: "data"}, Paths{Config: "config.json", Env: ".env", Cache: "cache",
+		{"today's dataset", Dataset{ID: "globex", Root: "data"}, Paths{Config: "config.json", Env: ".env", Cache: "cache",
 			Data: filepath.Join("data", "raw"), Facts: filepath.Join("data", "facts"), Notes: filepath.Join("data", "notes"),
 			Context: filepath.Join("data", "context"), Drafts: filepath.Join("data", "drafts")}},
-		{"another root", Employer{ID: "acme", Root: filepath.Join("data", "acme")}, Paths{
+		{"another root", Dataset{ID: "acme", Root: filepath.Join("data", "acme")}, Paths{
 			Config: filepath.Join("data", "acme", "config.json"), Env: filepath.Join("data", "acme", ".env"), Cache: filepath.Join("cache", "acme"),
 			Data: filepath.Join("data", "acme", "raw"), Facts: filepath.Join("data", "acme", "facts"), Notes: filepath.Join("data", "acme", "notes"),
 			Context: filepath.Join("data", "acme", "context"), Drafts: filepath.Join("data", "acme", "drafts")}},
-		{"set paths win", Employer{ID: "acme", Root: "old", Config: "acme.json", Cache: "/mnt/mirrors", Env: "acme.env"}, Paths{
+		{"set paths win", Dataset{ID: "acme", Root: "old", Config: "acme.json", Cache: "/mnt/mirrors", Env: "acme.env"}, Paths{
 			Config: "acme.json", Env: "acme.env", Cache: "/mnt/mirrors",
 			Data: filepath.Join("old", "raw"), Facts: filepath.Join("old", "facts"), Notes: filepath.Join("old", "notes"),
 			Context: filepath.Join("old", "context"), Drafts: filepath.Join("old", "drafts")}},
-		{"no dataset", Employer{ID: "initech"}, Paths{}},
+		{"no dataset", Dataset{ID: "initech"}, Paths{}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -111,11 +112,11 @@ func TestKind(t *testing.T) {
 	mk("new")
 	tests := map[string]string{"full": KindFull, "frozen": KindFacts, "new": KindContext, "missing": KindContext}
 	for dir, want := range tests {
-		if got := (Employer{ID: "x", Root: filepath.Join(root, dir)}).Kind(); got != want {
+		if got := (Dataset{ID: "x", Root: filepath.Join(root, dir)}).Kind(); got != want {
 			t.Errorf("Kind(%s) = %s, want %s", dir, got, want)
 		}
 	}
-	if got := (Employer{ID: "x"}).Kind(); got != KindContext {
+	if got := (Dataset{ID: "x"}).Kind(); got != KindContext {
 		t.Errorf("Kind(no root) = %s", got)
 	}
 }
@@ -145,6 +146,39 @@ func TestGetAndFrozenAt(t *testing.T) {
 	}
 }
 
+// The user's own projects are a dataset too, marked personal: no months need bound them, and a
+// career lists them after the jobs.
+func TestPersonal(t *testing.T) {
+	f, err := Parse([]byte(`{"datasets": [
+  {"id": "personal", "employer": "Personal projects", "personal": true, "root": "data/personal", "config": "config.personal.json", "cache": "cache/personal"},
+  {"id": "acme", "employer": "Acme", "from": "2019-09", "root": "data"},
+  {"id": "oss", "employer": "Open source", "personal": true, "from": "2015-01"}
+]}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var ids []string
+	for _, e := range f.Ordered() {
+		ids = append(ids, e.ID)
+	}
+	if want := []string{"acme", "oss", "personal"}; !reflect.DeepEqual(ids, want) {
+		t.Errorf("Ordered() = %v, want the jobs, then the personal datasets", ids)
+	}
+	if p := f.Datasets[0].Paths(); p.Config != "config.personal.json" || p.Data != filepath.Join("data", "personal", "raw") {
+		t.Errorf("paths = %+v", p)
+	}
+	if err := f.SetFrozen("personal"); err == nil || !strings.Contains(err.Error(), "is personal") {
+		t.Errorf("SetFrozen(personal) = %v, want it refused", err)
+	}
+	if _, err := Parse([]byte(`{"datasets": [{"id": "x", "employer": "X", "personal": true, "root": "d", "frozen": true}]}`)); err == nil ||
+		!strings.Contains(err.Error(), "never frozen") {
+		t.Errorf("Parse(personal and frozen) = %v, want it refused", err)
+	}
+	if _, err := Parse([]byte(`{"datasets": [{"id": "x", "employer": "X", "personal": true, "from": "soon"}]}`)); err == nil {
+		t.Error("a personal dataset's months, when given, must still be months")
+	}
+}
+
 func TestOrdered(t *testing.T) {
 	f, err := Parse([]byte(good))
 	if err != nil {
@@ -157,8 +191,47 @@ func TestOrdered(t *testing.T) {
 	if want := []string{"initech", "acme", "globex"}; !reflect.DeepEqual(ids, want) {
 		t.Errorf("Ordered() = %v, want %v, by start", ids, want)
 	}
-	if f.Employers[0].ID != "globex" {
+	if f.Datasets[0].ID != "globex" {
 		t.Error("Ordered() reordered the file's own list")
+	}
+}
+
+// SetFrozen marks a dataset frozen, and Save writes the file back one dataset per line, without
+// the fields left empty; it reads back the same.
+func TestSetFrozenAndSave(t *testing.T) {
+	f, err := Parse([]byte(good))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := f.SetFrozen("globex"); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.SetFrozen("initech"); err == nil || !strings.Contains(err.Error(), "no dataset") {
+		t.Errorf("SetFrozen(no root) = %v", err)
+	}
+	if err := f.SetFrozen("hooli"); err == nil {
+		t.Error("SetFrozen(unknown) = nil")
+	}
+	p := filepath.Join(t.TempDir(), "careers.json")
+	if err := f.Save(p); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := `{"datasets": [
+  {"id":"globex","employer":"Globex","from":"2022-09","root":"data","frozen":true},
+  {"id":"acme","employer":"Acme Ltd","from":"2019-03","to":"2022-08","root":"data/acme","frozen":true},
+  {"id":"initech","employer":"Initech","from":"2015-01","to":"2019-02"}
+]}
+`
+	if string(data) != want {
+		t.Errorf("saved:\n%s\nwant:\n%s", data, want)
+	}
+	back, err := Load(p)
+	if err != nil || !reflect.DeepEqual(back, f) {
+		t.Errorf("read back %+v, %v", back, err)
 	}
 }
 
@@ -171,7 +244,7 @@ func TestLoad(t *testing.T) {
 		t.Error("Exists(missing) = true")
 	}
 	p := filepath.Join(dir, "careers.json")
-	if err := os.WriteFile(p, []byte(`{"employers": [{"id": "x"}]}`), 0o644); err != nil {
+	if err := os.WriteFile(p, []byte(`{"datasets": [{"id": "x"}]}`), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	if !Exists(p) {

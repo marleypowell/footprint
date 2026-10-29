@@ -4,7 +4,9 @@ The code half of aggregation: it reads the collected dataset (`data/raw`), plus 
 `data/notes` and `data/context`, and decides what counts and how much. That covers deduplicated
 changes, work items, docs, repos, reviews, technologies, the career-framework map and totals, with
 a bounded evidence pack per work item. `check` holds a note or draft to those facts, and `count`
-and `search` answer questions from them without writing anything.
+and `search` answer questions from them without writing anything. For a past job kept as its
+facts alone, `LoadStored` reads a facts directory back (its records and `events.jsonl`) for
+`check`, and `Freeze` makes one a hashed record (`frozen.json`).
 
 Rules about what counts live here, so every document an agent writes agrees on the numbers. The
 package is pure and offline: it reads no config, tokens or mirrors, and the same inputs give
@@ -12,4 +14,5 @@ byte-identical output. The output contract is `docs/facts-schema.md`, which chan
 change as any field or rule.
 
 Tests build a dataset in memory from the fixtures in `facts_test.go`. Each file's rules are tested
-in its own `_test.go`, and `TestDeterministic` guards byte-identical output.
+in its own `_test.go`, and `TestDeterministic` guards byte-identical output. `TestStoredChecksAsLive`
+guards that stored facts check notes and drafts exactly as the live ones do.

@@ -31,9 +31,10 @@ flags and config are in `README.md`.
   variable names only. The Atlassian connector in Claude Code is for exploring and spot checks, not
   for collecting.
 - `data/` (private-repo content about one person) and `cache/` (~9 GB of mirrors) stay untracked.
-  `data/careers.json` lists the user's employers' datasets: never collect into one marked
-  `frozen` (a past job's snapshot), and give each dataset its own cache (`README.md`: Several
-  employers).
+  `data/careers.json` lists the user's datasets (one per job, and personal projects): never collect
+  into one marked `frozen` (a past job's snapshot), and give each dataset its own cache
+  (`README.md`: Several employers). `freeze -drop-raw` and `-drop-packs` delete data for good: run
+  them only once the user has confirmed, for that dataset.
 - The `issue_tracker` and `wiki` config sections are optional; code must handle a nil
   `Tools.Tracker` / `Tools.Wiki` (no issue keys, the `issues` / `pages` stage skipped).
 - Verify changes with `go test ./...`. `TestPipeline` runs every stage offline through the in-memory

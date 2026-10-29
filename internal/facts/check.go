@@ -573,6 +573,14 @@ func (f *Facts) knownURL(u string) bool {
 
 // isProjectKey says whether a key prefix is one of the tracker's projects.
 func (f *Facts) isProjectKey(prefix string) bool {
+	f.projectKeySet()
+	return f.projectKeys[prefix]
+}
+
+// projectKeyList is the tracker's project keys, old ones included, sorted.
+func (f *Facts) projectKeyList() []string { return sortedKeys(f.projectKeySet()) }
+
+func (f *Facts) projectKeySet() map[string]bool {
 	if f.projectKeys == nil {
 		f.projectKeys = map[string]bool{}
 		for _, p := range f.raw.IssueProjects {
@@ -582,8 +590,10 @@ func (f *Facts) isProjectKey(prefix string) bool {
 			}
 		}
 		for _, is := range f.Issues {
-			f.projectKeys[is.Project] = true
+			if is.Project != "" {
+				f.projectKeys[is.Project] = true
+			}
 		}
 	}
-	return f.projectKeys[prefix]
+	return f.projectKeys
 }
