@@ -116,7 +116,7 @@ Pull requests (merge requests, on GitLab) whose author is the user, in any state
 | `additions`, `deletions`, `changed_files` | size of the PR |
 | `review_decision`, `reviews`, `review_count`, `requested_reviewers`, `comment_count` | review activity on the PR |
 | `labels`, `assignees`, `closing_issues` | metadata |
-| `commits` | every commit in the PR (`sha`, `headline`, author name/email/login). Joins to `commits.jsonl` by `sha`; commits by other people (or agents) in the user's PRs are listed here even when they are not in `commits.jsonl` |
+| `commits` | every commit in the PR (`sha`, `headline`, author name/email/login, `is_merge`: it has more than one parent, as when someone merges the base branch into the PR). Joins to `commits.jsonl` by `sha`; commits by other people (or agents) in the user's PRs are listed here even when they are not in `commits.jsonl` |
 | `files` | every changed path with `additions`, `deletions`, `change_type` |
 | `issue_keys` | from title, body and head branch name, as for commits |
 

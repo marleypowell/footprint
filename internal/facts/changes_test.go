@@ -92,10 +92,12 @@ func TestTrustedKeys(t *testing.T) {
 }
 
 // A PR's class is whoever wrote most of its commits: the user unless an agent wrote more (and no
-// fewer than colleagues), or colleagues wrote more than both. Bots' commits do not decide it.
+// fewer than colleagues), or colleagues wrote more than both. Bots' commits and merges of the base
+// branch into the PR do not decide it.
 func TestPRChangeClass(t *testing.T) {
 	who := map[byte][2]string{'s': {"Jane Doe", "jane@example.com"}, 'a': {"Claude", "noreply@anthropic.com"},
-		'c': {"Other Person", "other@example.com"}, 'b': {"dependabot[bot]", "bot@example.com"}}
+		'c': {"Other Person", "other@example.com"}, 'b': {"dependabot[bot]", "bot@example.com"},
+		'm': {"Other Person", "other@example.com"}} // m: a colleague's merge of the base branch into the PR
 	for _, tc := range []struct {
 		authors string
 		want    string
@@ -103,11 +105,12 @@ func TestPRChangeClass(t *testing.T) {
 		{"", Self}, {"ss", Self}, {"ssa", Self}, {"sa", Self}, {"bbs", Self}, {"sc", Self}, {"bb", Self},
 		{"saa", Agent}, {"a", Agent}, {"ac", Agent}, {"ccaa", Agent},
 		{"scc", Colleague}, {"c", Colleague}, {"cca", Colleague},
+		{"ssmmm", Self}, {"mmm", Self}, {"cmmm", Colleague},
 	} {
 		pr := prRec(1, "OPEN", "2024-01-01T00:00:00Z", nil, func(p *codehost.PullRequest) {
 			for i := range len(tc.authors) {
 				a := who[tc.authors[i]]
-				p.Commits = append(p.Commits, codehost.PRCommit{SHA: "s" + itoa(i), AuthoredAt: "2024-01-01T00:00:00Z", AuthorName: ptr(a[0]), AuthorEmail: ptr(a[1])})
+				p.Commits = append(p.Commits, codehost.PRCommit{SHA: "s" + itoa(i), AuthoredAt: "2024-01-01T00:00:00Z", AuthorName: ptr(a[0]), AuthorEmail: ptr(a[1]), IsMerge: tc.authors[i] == 'm'})
 			}
 		})
 		if got := changeFacts().prChange("main", &pr, nil, map[string]bool{}).Class; got != tc.want {

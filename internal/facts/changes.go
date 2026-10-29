@@ -282,6 +282,9 @@ func (f *Facts) prChange(defaultBranch string, pr *collect.PullRequestRecord, ow
 	}
 	c.At = c.at.Format(time.RFC3339)
 	for _, pc := range pr.Commits {
+		if pc.IsMerge {
+			continue
+		}
 		switch f.people.class(deref(pc.AuthorName), deref(pc.AuthorEmail)) {
 		case Self:
 			c.Authors.Self++

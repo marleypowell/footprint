@@ -11,7 +11,7 @@ import (
 )
 
 const (
-	prCommitFields = `commit { oid messageHeadline authoredDate author { name email user { login } } }`
+	prCommitFields = `commit { oid messageHeadline authoredDate parents { totalCount } author { name email user { login } } }`
 	prFileFields   = `path additions deletions changeType`
 	prFields       = `
   number title body url state isDraft createdAt updatedAt closedAt mergedAt
@@ -73,7 +73,10 @@ type prCommitNode struct {
 		Oid             string `json:"oid"`
 		MessageHeadline string `json:"messageHeadline"`
 		AuthoredDate    string `json:"authoredDate"`
-		Author          *struct {
+		Parents         struct {
+			TotalCount int `json:"totalCount"`
+		} `json:"parents"`
+		Author *struct {
 			Name  *string `json:"name"`
 			Email *string `json:"email"`
 			User  *actor  `json:"user"`
@@ -297,7 +300,7 @@ func (h *Host) flatten(ctx context.Context, api *client, n prNode) (codehost.Pul
 			Repo: ci.Repository.NameWithOwner, Number: ci.Number, Title: ci.Title, URL: ci.URL})
 	}
 	for _, c := range commits {
-		pc := codehost.PRCommit{SHA: c.Commit.Oid, Headline: c.Commit.MessageHeadline, AuthoredAt: c.Commit.AuthoredDate}
+		pc := codehost.PRCommit{SHA: c.Commit.Oid, Headline: c.Commit.MessageHeadline, AuthoredAt: c.Commit.AuthoredDate, IsMerge: c.Commit.Parents.TotalCount > 1}
 		if a := c.Commit.Author; a != nil {
 			pc.AuthorName, pc.AuthorEmail, pc.AuthorLogin = a.Name, a.Email, login(a.User)
 		}

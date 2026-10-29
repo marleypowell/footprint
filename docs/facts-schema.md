@@ -192,7 +192,8 @@ In a window's items.jsonl, `totals`, `first`, `last` and `active_days` are the w
   `migrated-pr`, `commit`), `repo`, `url`, `title`, `state` (`merged`, `open`, `closed`; `landed`,
   `unlanded`), `landed`, `at` (when it counts: a PR's merge, else its opening; a commit's authoring),
   `class` (who wrote it: `self`, `agent`, `colleague`, `bot`; a PR's is whoever wrote most of its
-  commits, and it is the user's either way; or `co-authored`), `authors` (a PR's commits by class),
+  commits, and it is the user's either way, merges of the base branch into it not counted; or
+  `co-authored`), `authors` (a PR's commits by class, merge commits left out),
   `lines` (`added`, `deleted`, `files`, and what was excluded), `keys` (trusted, current), `item`,
   `also_items`, `commits` (the user's own, one per patch), `technologies` (a landed change's, most
   lines first).

@@ -236,6 +236,7 @@ type PRCommit struct {
 	AuthorName  *string `json:"author_name"`
 	AuthorEmail *string `json:"author_email"`
 	AuthorLogin *string `json:"author_login"`
+	IsMerge     bool    `json:"is_merge"` // more than one parent: a sync with the base branch, not work
 }
 
 type PRFile struct {

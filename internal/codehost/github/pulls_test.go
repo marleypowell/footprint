@@ -40,11 +40,13 @@ func TestFlatten(t *testing.T) {
     {"requestedReviewer": {}}, {"requestedReviewer": null}]},
   "closingIssuesReferences": {"nodes": [
     {"number": 5, "title": "Retries", "url": "https://github.com/acme/pay/issues/5", "repository": {"nameWithOwner": "acme/pay"}}]},
-  "commits": {"totalCount": 2, "nodes": [
-    {"commit": {"oid": "aaa", "messageHeadline": "Add retries", "authoredDate": "2024-04-01T00:00:00Z",
+  "commits": {"totalCount": 3, "nodes": [
+    {"commit": {"oid": "aaa", "messageHeadline": "Add retries", "authoredDate": "2024-04-01T00:00:00Z", "parents": {"totalCount": 1},
                 "author": {"name": "Jane Doe", "email": "jdoe@acme.test", "user": {"login": "jdoe"}}}},
     {"commit": {"oid": "bbb", "messageHeadline": "Fix the test", "authoredDate": "2024-04-02T00:00:00Z",
-                "author": {"name": "jdoe", "email": "jdoe@laptop.local", "user": null}}}]},
+                "author": {"name": "jdoe", "email": "jdoe@laptop.local", "user": null}}},
+    {"commit": {"oid": "mmm", "messageHeadline": "Merge branch 'main' into jdoe/retries", "authoredDate": "2024-04-02T12:00:00Z",
+                "parents": {"totalCount": 2}, "author": {"name": "Sam", "email": "sam@acme.test", "user": {"login": "sam"}}}}]},
   "files": {"totalCount": 2, "nodes": [
     {"path": "queue.go", "additions": 100, "deletions": 30, "changeType": "MODIFIED"},
     {"path": "queue_test.go", "additions": 20, "deletions": 0, "changeType": "ADDED"}]}
@@ -62,12 +64,14 @@ func TestFlatten(t *testing.T) {
 			RequestedReviewers: []*string{ptr("lee"), ptr("platform"), nil, nil},
 			ClosingIssues: []codehost.ClosingIssue{
 				{Repo: "acme/pay", Number: 5, Title: "Retries", URL: "https://github.com/acme/pay/issues/5"}},
-			CommitCount: 2,
+			CommitCount: 3,
 			Commits: []codehost.PRCommit{
 				{SHA: "aaa", Headline: "Add retries", AuthoredAt: "2024-04-01T00:00:00Z",
 					AuthorName: ptr("Jane Doe"), AuthorEmail: ptr("jdoe@acme.test"), AuthorLogin: ptr("jdoe")},
 				{SHA: "bbb", Headline: "Fix the test", AuthoredAt: "2024-04-02T00:00:00Z",
 					AuthorName: ptr("jdoe"), AuthorEmail: ptr("jdoe@laptop.local")},
+				{SHA: "mmm", Headline: "Merge branch 'main' into jdoe/retries", AuthoredAt: "2024-04-02T12:00:00Z",
+					AuthorName: ptr("Sam"), AuthorEmail: ptr("sam@acme.test"), AuthorLogin: ptr("sam"), IsMerge: true},
 			},
 			FileCount: 2,
 			Files: []codehost.PRFile{
