@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/marleypowell/footprint/internal/codehost"
@@ -69,10 +70,10 @@ func TestRepoNode(t *testing.T) {
 // next request, until GitHub says there is no next page.
 func TestReposPaginates(t *testing.T) {
 	pages := map[any]string{
-		nil: `{"data": {"organization": {"repositories": {"totalCount": 3,
+		nil: `{"data": {"repositoryOwner": {"__typename": "Organization", "repositories": {"totalCount": 3,
   "pageInfo": {"hasNextPage": true, "endCursor": "c1"},
   "nodes": [{"name": "api", "nameWithOwner": "acme/api"}, {"name": "pay", "nameWithOwner": "acme/pay"}]}}}}`,
-		"c1": `{"data": {"organization": {"repositories": {"totalCount": 3,
+		"c1": `{"data": {"repositoryOwner": {"__typename": "Organization", "repositories": {"totalCount": 3,
   "pageInfo": {"hasNextPage": false, "endCursor": "c2"},
   "nodes": [{"name": "web", "nameWithOwner": "acme/web"}]}}}}`,
 	}
@@ -100,14 +101,30 @@ func TestReposPaginates(t *testing.T) {
 	}
 }
 
-// An org the token cannot see comes back as a null organization (with a NOT_FOUND error beside
-// it), which Repos reports rather than returning no repositories.
-func TestReposUnknownOrg(t *testing.T) {
+// A user account lists its own repositories as an organization does: the query asks for the
+// owner's, not the ones others own that the user collaborates on.
+func TestReposOfAUser(t *testing.T) {
 	h, _ := fakeGraphQL(t, func(gqlRequest) string {
-		return `{"data": {"organization": null}, "errors": [{"type": "NOT_FOUND", "message": "Could not resolve to an Organization with the login of 'acme'."}]}`
+		return `{"data": {"repositoryOwner": {"__typename": "User", "repositories": {"totalCount": 1,
+  "pageInfo": {"hasNextPage": false}, "nodes": [{"name": "footprint", "nameWithOwner": "jdoe/footprint"}]}}}}`
 	})
 	repos, err := fakeHost(t, h).Repos(context.Background())
-	want := "github: organization acme not found or not visible to this token"
+	if err != nil || len(repos) != 1 || repos[0].FullName != "jdoe/footprint" {
+		t.Errorf("Repos() = %+v, %v", repos, err)
+	}
+	if !strings.Contains(reposQuery, "repositoryOwner(login: $org)") || !strings.Contains(reposQuery, "ownerAffiliations: [OWNER]") {
+		t.Error("reposQuery should ask any owner for its own repositories")
+	}
+}
+
+// A login the token cannot see comes back as a null owner (with a NOT_FOUND error beside it),
+// which Repos reports rather than returning no repositories.
+func TestReposUnknownOrg(t *testing.T) {
+	h, _ := fakeGraphQL(t, func(gqlRequest) string {
+		return `{"data": {"repositoryOwner": null}, "errors": [{"type": "NOT_FOUND", "message": "Could not resolve to a RepositoryOwner with the login of 'acme'."}]}`
+	})
+	repos, err := fakeHost(t, h).Repos(context.Background())
+	want := "github: acme is no organization or user this token can see"
 	if err == nil || err.Error() != want || repos != nil {
 		t.Errorf("Repos() = (%v, %v), want error %q", repos, err, want)
 	}

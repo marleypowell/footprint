@@ -112,7 +112,9 @@ Every stage is idempotent and overwrites its own output. To refresh later, run
 `config.json` is personal and gitignored. `init` generates it from
 [`config.example.json`](config.example.json), which is compiled into the binary:
 
-- `org`, `login`: the org (a GitHub organization) and your account on the code host.
+- `org`, `login`: the org (a GitHub organization) and your account on the code host. For a dataset
+  of your own projects, `org` is your user account: its own repositories are listed (not those you
+  only collaborate on), and the searches say `user:` instead of `org:`.
 - `identity.emails`: every address you have committed with, matched case-insensitively. `init` seeds
   this from the commits the code host already attributes to your account, plus its noreply forms.
 - `identity.names`: full names matched exactly, for commits made with an email the host does not
@@ -276,7 +278,8 @@ from the working directory:
 - `frozen` marks a past job's dataset: collection refuses it, so a snapshot you kept is never
   changed (or emptied, once access to that org has gone).
 - `personal` marks your own projects: no employer's, so it needs no months, is listed after the
-  jobs, and is never frozen.
+  jobs, and is never frozen. Make its config with `bin/footprint -dataset personal init --org
+  <your login>`, and drop the `issue_tracker` and `wiki` sections from it.
 
 `bin/footprint datasets` lists them, with what is on disk: `full` (raw data), `facts` (the facts
 alone) or `context` (neither). `-dataset <id>` runs any command on one: it sets `-config`, `-data`,

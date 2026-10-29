@@ -62,7 +62,11 @@ func (h *Host) AttributedCommits(ctx context.Context, author string, limit int) 
 	if err != nil {
 		return nil, err
 	}
-	query := fmt.Sprintf("author:%s org:%s", author, h.org)
+	scope, err := h.scope(ctx, api)
+	if err != nil {
+		return nil, err
+	}
+	query := fmt.Sprintf("author:%s %s", author, scope)
 	if limit > 0 {
 		return sampleCommits(ctx, api, query, limit)
 	}

@@ -124,7 +124,11 @@ func (h *Host) Reviewed(ctx context.Context, reviewer string) ([]codehost.Review
 	if err != nil {
 		return nil, err
 	}
-	slices, err := searchSlices(ctx, api, fmt.Sprintf("is:pr commenter:%s org:%s -author:%s", reviewer, h.org, reviewer))
+	scope, err := h.scope(ctx, api)
+	if err != nil {
+		return nil, err
+	}
+	slices, err := searchSlices(ctx, api, fmt.Sprintf("is:pr commenter:%s %s -author:%s", reviewer, scope, reviewer))
 	if err != nil {
 		return nil, err
 	}

@@ -24,7 +24,7 @@ const (
 	maxComment     = 400
 	maxChanges     = 40
 	maxBodies      = 6
-	maxBody        = 600
+	maxBody        = 1200
 	maxSubjects    = 60
 	maxPaths       = 12
 	maxFromUser    = 4000

@@ -8,10 +8,13 @@ import (
 	"github.com/marleypowell/footprint/internal/logx"
 )
 
+// reposQuery lists an owner's own repositories: an organization's, or a user's (not those others
+// own that the user collaborates on).
 const reposQuery = `
 query($org: String!, $cursor: String) {
-  organization(login: $org) {
-    repositories(first: 50, after: $cursor, orderBy: {field: NAME, direction: ASC}) {
+  repositoryOwner(login: $org) {
+    __typename
+    repositories(first: 50, after: $cursor, ownerAffiliations: [OWNER], orderBy: {field: NAME, direction: ASC}) {
       totalCount
       pageInfo { hasNextPage endCursor }
       nodes {
@@ -117,21 +120,22 @@ func (h *Host) Repos(ctx context.Context) ([]codehost.Repo, error) {
 	var cursor *string
 	for {
 		var data struct {
-			Organization *struct {
+			Owner *struct {
+				Typename     string `json:"__typename"`
 				Repositories struct {
 					TotalCount int        `json:"totalCount"`
 					PageInfo   pageInfo   `json:"pageInfo"`
 					Nodes      []repoNode `json:"nodes"`
 				} `json:"repositories"`
-			} `json:"organization"`
+			} `json:"repositoryOwner"`
 		}
 		if err := api.graphql(ctx, reposQuery, map[string]any{"org": h.org, "cursor": cursor}, &data); err != nil {
 			return nil, err
 		}
-		if data.Organization == nil {
-			return nil, fmt.Errorf("github: organization %s not found or not visible to this token", h.org)
+		if data.Owner == nil {
+			return nil, fmt.Errorf("github: %s is no organization or user this token can see", h.org)
 		}
-		page := data.Organization.Repositories
+		page := data.Owner.Repositories
 		for _, n := range page.Nodes {
 			repos = append(repos, n.repo())
 		}

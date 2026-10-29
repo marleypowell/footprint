@@ -18,13 +18,47 @@ import (
 	"github.com/marleypowell/footprint/internal/codehost"
 )
 
-// Host is one GitHub organisation. It takes no settings yet (config: {"kind": "github"}).
+// Host is one GitHub owner: an organization, or a user account (for a dataset of the user's own
+// projects). It takes no settings yet (config: {"kind": "github"}).
 type Host struct {
-	org string
+	org string // the owner's login, organization or user
 
 	once   sync.Once
 	api    *client
 	apiErr error
+
+	ownerOnce sync.Once
+	qualifier string // "org" or "user": how a search names the owner
+	ownerErr  error
+}
+
+const ownerQuery = `query($login: String!) { repositoryOwner(login: $login) { __typename } }`
+
+// scope is the search qualifier for the owner's repositories: org:<login> for an organization,
+// user:<login> for a user. The owner's type is asked once.
+func (h *Host) scope(ctx context.Context, api *client) (string, error) {
+	h.ownerOnce.Do(func() {
+		var data struct {
+			Owner *struct {
+				Typename string `json:"__typename"`
+			} `json:"repositoryOwner"`
+		}
+		if h.ownerErr = api.graphql(ctx, ownerQuery, map[string]any{"login": h.org}, &data); h.ownerErr != nil {
+			return
+		}
+		switch {
+		case data.Owner == nil:
+			h.ownerErr = fmt.Errorf("github: %s is no organization or user this token can see", h.org)
+		case data.Owner.Typename == "User":
+			h.qualifier = "user"
+		default:
+			h.qualifier = "org"
+		}
+	})
+	if h.ownerErr != nil {
+		return "", h.ownerErr
+	}
+	return h.qualifier + ":" + h.org, nil
 }
 
 var _ codehost.Host = (*Host)(nil)

@@ -23,8 +23,8 @@ func TestExcerpt(t *testing.T) {
 	} {
 		check(t, tc.name, excerpt(tc.body), tc.want)
 	}
-	long := excerpt(strings.Repeat("word ", 200)) // 999 characters on one line
-	if !strings.HasSuffix(long, " … [+399 characters]") || len([]rune(long)) > maxBody+len(" … [+399 characters]") {
+	long := excerpt(strings.Repeat("word ", 400)) // 1999 characters on one line
+	if !strings.HasSuffix(long, " … [+799 characters]") || len([]rune(long)) > maxBody+len(" … [+799 characters]") {
 		t.Errorf("excerpt of a long description = %q, want it clipped to %d characters", long, maxBody)
 	}
 }

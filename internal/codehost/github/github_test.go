@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/marleypowell/footprint/internal/codehost"
@@ -55,6 +56,7 @@ func fakeHost(t *testing.T, h http.Handler) *Host {
 	t.Helper()
 	host := testHost(t)
 	host.once.Do(func() { host.api = fakeClient(h) })
+	host.ownerOnce.Do(func() { host.qualifier = "org" }) // an organization, unless a test asks scope itself
 	return host
 }
 
@@ -191,5 +193,37 @@ func TestAccount(t *testing.T) {
 		if !reflect.DeepEqual(got, tt.want) {
 			t.Errorf("%s: Account() = %+v, want %+v", tt.name, got, tt.want)
 		}
+	}
+}
+
+// scope names the owner in a search as GitHub's qualifiers do, org: for an organization and user:
+// for a user account, asking the owner's type once; a login no one has is an error.
+func TestScope(t *testing.T) {
+	tests := []struct {
+		name, answer, want, wantErr string
+	}{
+		{"an organization", `{"data": {"repositoryOwner": {"__typename": "Organization"}}}`, "org:acme", ""},
+		{"a user", `{"data": {"repositoryOwner": {"__typename": "User"}}}`, "user:acme", ""},
+		{"nobody", `{"data": {"repositoryOwner": null}}`, "", "acme is no organization or user"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			h, requests := fakeGraphQL(t, func(req gqlRequest) string {
+				if req.Query != ownerQuery || req.Variables["login"] != "acme" {
+					t.Errorf("asked %q with %v", req.Query, req.Variables)
+				}
+				return tt.answer
+			})
+			host := testHost(t)
+			for range 2 {
+				got, err := host.scope(context.Background(), fakeClient(h))
+				if got != tt.want || (tt.wantErr == "") != (err == nil) || (err != nil && !strings.Contains(err.Error(), tt.wantErr)) {
+					t.Errorf("scope() = %q, %v; want %q, error %q", got, err, tt.want, tt.wantErr)
+				}
+			}
+			if len(*requests) != 1 {
+				t.Errorf("asked %d times, want once", len(*requests))
+			}
+		})
 	}
 }

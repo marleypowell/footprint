@@ -144,7 +144,11 @@ func (h *Host) PullRequests(ctx context.Context, author string) ([]codehost.Pull
 	if err != nil {
 		return nil, err
 	}
-	nodes, err := h.searchPRs(ctx, api, fmt.Sprintf("is:pr author:%s org:%s", author, h.org))
+	scope, err := h.scope(ctx, api)
+	if err != nil {
+		return nil, err
+	}
+	nodes, err := h.searchPRs(ctx, api, fmt.Sprintf("is:pr author:%s %s", author, scope))
 	if err != nil {
 		return nil, err
 	}
