@@ -240,6 +240,9 @@ go test ./...    # unit tests, plus a full offline pipeline test over real git r
 go vet ./...
 ```
 
+Each top-level `internal/` dir has a `README.md` with its purpose and boundaries, and every Go
+file has a sibling `_test.go` that reads as its spec.
+
 CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) runs the tests with `-race` on Go 1.24
 and the latest Go, plus gofmt, staticcheck, govulncheck, and `go vet` for macOS and Windows.
 
@@ -256,6 +259,9 @@ internal/doc/           raw documents: key-ordered JSON objects, YAML parsing
 internal/par/           bounded parallel work
 internal/logx/          progress logging
 internal/facts/         aggregation: the counting rules, work items, packs, note states, check
+internal/doctor/        completeness checks over a collected dataset
+internal/filekind/      written vs generated or vendored files
+internal/tech/          technologies named from file paths
 docs/data-schema.md     the output contract (compiled in; written to data/raw/README.md)
 docs/facts-schema.md    the facts contract (compiled in; written to data/facts/README.md)
 .claude/skills/footprint/  the skill an agent follows to use the data

@@ -2,16 +2,14 @@ package facts
 
 import (
 	"bytes"
-	"encoding/json"
-	"fmt"
 	"io/fs"
 	"math/rand"
 	"os"
 	"path/filepath"
 	"reflect"
-	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/marleypowell/footprint/internal/codehost"
 	"github.com/marleypowell/footprint/internal/collect"
@@ -242,6 +240,63 @@ func fixture() *Raw {
 	}
 }
 
+// oneRepo is a small dataset: the repo app (default branch main), the user Jane Doe, and the
+// commits, PRs and issues given.
+func oneRepo(commits []collect.Commit, prs []collect.PullRequestRecord, issues []collect.IssueRecord) *Raw {
+	mainBranch := "main"
+	return &Raw{
+		Index: collect.Index{Identity: collect.IdentityConfig{Emails: []string{"jane@example.com"}, Names: []string{"Jane Doe"}},
+			Repos: []collect.IndexRepo{{Name: "app", URL: "https://code.example/org/app"}}},
+		Projects: []collect.Project{{Name: "app", URL: "https://code.example/org/app", CodeHost: codehost.Repo{Name: "app", DefaultBranch: &mainBranch}}},
+		Commits:  commits, PRs: prs, Issues: issues,
+	}
+}
+
+// prRec is one of the user's PRs in app, against main.
+func prRec(n int, state, created string, merged *string, mod func(*codehost.PullRequest)) collect.PullRequestRecord {
+	p := codehost.PullRequest{Repo: "app", Number: n, URL: "https://code.example/org/app/pull/" + itoa(n), Title: "PR " + itoa(n),
+		State: state, CreatedAt: created, MergedAt: merged, BaseRef: "main", Labels: []string{}, Assignees: []string{}, Reviews: []codehost.Review{}}
+	if mod != nil {
+		mod(&p)
+	}
+	return collect.PullRequestRecord{PullRequest: p, IssueKeys: []string{}}
+}
+
+// issueRec is an issue in project ENG, created on 2023-12-01, that the user has no part in.
+func issueRec(key string, level int, mod func(*collect.IssueRecord)) collect.IssueRecord {
+	r := collect.IssueRecord{Issue: tracker.Issue{Key: key, ID: "id-" + key, URL: "https://tracker.example/browse/" + key, PreviousKeys: []string{},
+		Project: project, Type: "Story", Level: level, Summary: "Summary of " + key, Status: "To Do", StatusCategory: "todo",
+		CreatedAt: "2023-12-01T00:00:00+00:00", Subtasks: []tracker.IssueRef{}, Comments: []tracker.Comment{}, History: []tracker.Change{},
+		Worklogs: []tracker.Worklog{}}, Roles: []string{}}
+	if mod != nil {
+		mod(&r)
+	}
+	return r
+}
+
+// mustTime parses a timestamp or a day, failing the test on a typo.
+func mustTime(t *testing.T, ts string) time.Time {
+	t.Helper()
+	v, ok := parseTime(ts)
+	if !ok {
+		t.Fatalf("parseTime(%q) failed", ts)
+	}
+	return v
+}
+
+// writeFile writes text to dir/rel, making its directories.
+func writeFile(t *testing.T, dir, rel, text string) string {
+	t.Helper()
+	p := filepath.Join(dir, rel)
+	if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(p, []byte(text), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return p
+}
+
 func build(t *testing.T, raw *Raw, in Inputs) *Facts {
 	t.Helper()
 	f, err := Build(raw, in)
@@ -306,347 +361,8 @@ func TestCountingRules(t *testing.T) {
 	check(t, "items add up", []int{sum.Commits, sum.PRsMerged, sum.LinesAdded}, []int{all.Commits, all.PRsMerged, all.LinesAdded})
 }
 
-func TestIssues(t *testing.T) {
-	f := build(t, fixture(), Inputs{})
-	is := func(key string) *Issue { return f.issues[key] }
-	check(t, "the user's tracker account, from their marked activity", f.userID, "u-jane")
-	check(t, "done: made the final transition", []any{is("ENG-1").DoneByMe, is("ENG-1").Involvement}, []any{true, Done})
-	check(t, "done: assignee at resolution, reassigned since", []any{is("ENG-4").DoneByMe, is("ENG-4").Involvement}, []any{true, Done})
-	check(t, "raised, and named by a change", is("ENG-2").Involvement, Worked)
-	check(t, "assigned, named only by an older branch", []any{is("ENG-3").Involvement, is("ENG-3").Item}, []any{Assigned, ""})
-	check(t, "ancestor", is("ENG-10").Involvement, Ancestor)
-	check(t, "sub-task belongs to its story", is("ENG-4").Item, "ENG-1")
-
-	it := f.items["ENG-1"]
-	check(t, "feature", []any{it.Kind, it.Title, it.Initiative, it.Issues}, []any{KindFeature, "Fast search", &Ref{ID: "ENG-10", Title: "Search"}, []string{"ENG-1", "ENG-4"}})
-	check(t, "feature sub-tasks", *it.Subtasks, Subtasks{Total: 2, DoneByMe: 1})
-	check(t, "feature changes", []any{it.Changes, it.Docs}, []any{[]string{"app@c1", "app#5", "app@c12"}, []string{"doc+100", "adr+app+0001-use-queues"}})
-	ini := f.items["ENG-10"]
-	check(t, "initiative", []any{ini.Kind, ini.Features, ini.Involvement}, []any{KindInitiative, []string{"ENG-1"}, "contributed"})
-	check(t, "initiative totals include its features'", ini.Totals.PRsMerged, it.Totals.PRsMerged)
-	if _, ok := f.items["ENG-3"]; ok {
-		t.Error("an issue the user only had assigned made an item")
-	}
-}
-
-// Team signals: the board of the sprint that held each issue when the user worked on it, the
-// issues' projects, and their team field, by quarter.
-func TestTeamSignals(t *testing.T) {
-	f := build(t, fixture(), Inputs{})
-	check(t, "signals", f.teamSignals(All), []TeamSignals{{
-		Period:   "2024q1",
-		Boards:   []Signal{{Name: "Search Squad", Issues: 2}},
-		Projects: []Signal{{Name: "ENG", Title: "Engineering", Issues: 3}},
-		Teams:    []Signal{{Name: "Platform", Issues: 1}},
-	}})
-	w, _ := NewWindow("2024-04-01", "2024-06-30")
-	check(t, "a window with no issue work", f.teamSignals(w), []TeamSignals{})
-	for name, want := range map[string]string{
-		"Checkout 2020 Sprint 10": "Checkout", "Checkout CY22 Sprint 23": "Checkout", "Web Team CY23 TO 2": "Web Team",
-		"Checkout 2021 - Sprint 5": "Checkout", "Payments Sprint 1": "Payments", "Payments Archive": "Payments Archive",
-		"Sprint 12": "Sprint 12", "Cycle 3": "Cycle 3",
-	} {
-		if got := boardOf(name); got != want {
-			t.Errorf("boardOf(%q) = %q, want %q", name, got, want)
-		}
-	}
-}
-
-func TestDocs(t *testing.T) {
-	f := build(t, fixture(), Inputs{})
-	d, e := f.docs["100"], f.docs["101"]
-	check(t, "written", []any{d.Share, d.Words >= substantialWords, d.Substantial, d.Item, d.Items}, []any{100, true, true, "doc+100", []string{"ENG-1"}})
-	check(t, "edited once", []any{e.Share, e.Substantial, e.Item}, []any{25, false, ""})
-
-	a, b := f.docs["app/docs/decisions/0001-use-queues.md"], f.docs["app/docs/decisions/0002-theirs.md"]
-	check(t, "ADR: the user's commit and their agent's", []any{a.Ref, a.Type, a.CreatedAt, a.CreatedByMe, a.MyVersions, a.Versions, a.Share},
-		[]any{"adr+app+0001-use-queues", "adr", "2024-01-02T09:00:00Z", true, 2, 3, 66})
-	check(t, "ADR: substantial at its own length", []any{a.Words < substantialWords, a.Substantial, a.Item}, []any{true, true, "adr+app+0001-use-queues"})
-	check(t, "ADR: the changes that wrote it (not the rename), and theirs and its issues' items", []any{a.Changes, a.Items, a.First, a.Last},
-		[]any{[]string{"app@c1", "app#5"}, []string{"ENG-1", "ENG-2"}, "2024-01-02", "2024-01-04"})
-	check(t, "ADR: a colleague's", []any{b.CreatedByMe, b.Share, b.Substantial, b.Item, b.Changes}, []any{false, 50, false, "", []string{"app@c7"}})
-	it := f.items[a.Ref]
-	check(t, "ADR item", []any{it.Kind, it.Type, it.AlsoChanges, it.ActiveDays}, []any{KindDoc, "adr", []string{"app@c1", "app#5"}, 2})
-	pack := string(renderPack(it.pack, it.Pack))
-	for _, want := range []string{"## The decision record", "- app: docs/decisions/0001-use-queues.md", "created by you; 2 of 3 commits yours",
-		"- written in app#5 · ENG-1: feature"} {
-		if !strings.Contains(pack, want) {
-			t.Errorf("ADR pack has no %q:\n%s", want, pack)
-		}
-	}
-	if pack := string(renderPack(f.items["ENG-1"].pack, f.items["ENG-1"].Pack)); !strings.Contains(pack, "- adr+app+0001-use-queues · Use queues") {
-		t.Errorf("a feature's pack should name the ADR written in its changes:\n%s", pack)
-	}
-	if pack := string(renderPack(f.items["repo+app+2024q1"].pack, "")); strings.Contains(pack, "adr+app") {
-		t.Errorf("renaming an ADR is not writing it:\n%s", pack)
-	}
-	agentPR := &packInput{Doc: &packDoc{Repo: "app", Changes: []packDocChange{{ID: "app#9", Class: Agent, Title: "docs: an ADR"}}}}
-	if pack := string(renderPack(agentPR, "")); !strings.Contains(pack, "- written in app#9 (agent) · docs: an ADR") {
-		t.Errorf("an ADR's pack should say who wrote the changes it was written in:\n%s", pack)
-	}
-	check(t, "refs: by path where file names clash", (&Facts{raw: &Raw{Decisions: []collect.Decision{
-		{Repo: "web", Path: "apps/a/docs/adr/0001-x.md"}, {Repo: "web", Path: "apps/b/docs/adr/0001-x.md"}, {Repo: "a+b", Path: "docs/adr/0001-x.md"},
-	}}}).decisionRefs(), []string{"adr+web+apps%2Fa%2Fdocs%2Fadr%2F0001-x", "adr+web+apps%2Fb%2Fdocs%2Fadr%2F0001-x", "adr+a%2Bb+0001-x"})
-}
-
-func TestEffortAndIDs(t *testing.T) {
-	for days, want := range map[int]string{0: "XS", 1: "XS", 2: "S", 3: "S", 4: "M", 10: "M", 11: "L", 30: "L", 31: "XL"} {
-		if got := effortOf(days); got != want {
-			t.Errorf("effortOf(%d) = %s, want %s", days, got, want)
-		}
-	}
-	at, _ := parseTime("2024-12-31T23:30:00-02:00") // 2025-01-01 in UTC
-	check(t, "bucket ids are path-safe and UTC", []string{bucketID(".github-private", at), bucketID("a+b", at), itemPath("doc+x/y z")},
-		[]string{"repo+.github-private+2025q1", "repo+a%2Bb+2025q1", "doc+x%2Fy%20z"})
-}
-
-func TestWindows(t *testing.T) {
-	w, err := ParseWindow("2024-01-01..2024-01-31")
-	if err != nil {
-		t.Fatal(err)
-	}
-	in, _ := parseTime("2024-01-31T23:59:59Z")
-	out, _ := parseTime("2024-02-01T00:00:00Z")
-	check(t, "both days included, half-open", []bool{w.Contains(in), w.Contains(out)}, []bool{true, false})
-	check(t, "names", []string{w.String(), w.Dir(), All.String()}, []string{"2024-01-01..2024-01-31", "2024-01-01_2024-01-31", "all"})
-	if _, err := ParseWindow("2024-02-01..2024-01-01"); err == nil {
-		t.Error("want an error for a window that ends before it starts")
-	}
-	f := build(t, fixture(), Inputs{})
-	s := f.Summary(w)
-	check(t, "window totals", []int{s.Totals.PRsMerged, s.Totals.Commits, s.Totals.MigratedPRsMerged}, []int{1, 3, 0})
-	for _, it := range f.windowItems(w) {
-		if it.ID == "repo+app+2024q2" {
-			t.Error("an item with nothing in the window is in its view")
-		}
-	}
-}
-
-func TestNotes(t *testing.T) {
-	dir := t.TempDir()
-	f := build(t, fixture(), Inputs{})
-	pack := f.items["ENG-1"].Pack
-	note := func(item, inputs string, sections ...string) string {
-		var b strings.Builder
-		b.WriteString("---\nitem: " + item + "\ninputs: " + inputs + "\n---\n")
-		for _, s := range sections {
-			b.WriteString("\n## " + s + "\n\nText.\n")
-		}
-		return b.String()
-	}
-	write := func(name, text string) {
-		if err := os.WriteFile(filepath.Join(dir, name), []byte(text), 0o644); err != nil {
-			t.Fatal(err)
-		}
-	}
-	write("ENG-1.md", note("ENG-1", pack, NoteSections...))
-	write("ENG-10.md", note("ENG-10", "sha256:old", NoteSections...))
-	write("ENG-2.md", note("ENG-2", "x", "Summary"))
-	write("GONE-1.md", note("GONE-1", "x", NoteSections...))
-	f = build(t, fixture(), Inputs{NotesDir: dir})
-	states := map[string]string{}
-	for _, it := range f.Items {
-		states[it.ID] = it.Note
-	}
-	check(t, "note states", []string{states["ENG-1"], states["ENG-10"], states["ENG-2"], states["doc+100"], states["adr+app+0001-use-queues"]},
-		[]string{NoteCurrent, NoteStale, NoteInvalid, NoteMissing, NoteMissing})
-	check(t, "orphans", f.orphans, []string{"GONE-1"})
-	todo := string(f.todo(All))
-	if !strings.Contains(todo, "stale\tENG-10\t") || !strings.Contains(todo, "invalid\tENG-2\t") || !strings.Contains(todo, "orphan\tGONE-1.md") ||
-		strings.Contains(todo, "\tENG-1\t") {
-		t.Errorf("todo:\n%s", todo)
-	}
-
-	// The user's corrections join the pack, and so its hash: the note goes stale.
-	ctx := filepath.Join(t.TempDir(), "items")
-	if err := os.MkdirAll(ctx, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(ctx, "ENG-1.md"), []byte("It cut search time for everyone."), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	g := build(t, fixture(), Inputs{NotesDir: dir, ContextDir: filepath.Dir(ctx)})
-	if g.items["ENG-1"].Note != NoteStale || !strings.Contains(string(renderPack(g.items["ENG-1"].pack, g.items["ENG-1"].Pack)), "It cut search time") {
-		t.Error("a correction should reach the pack and make the note stale")
-	}
-}
-
-func TestCheck(t *testing.T) {
-	f := build(t, fixture(), Inputs{})
-	run := func(text string) []string {
-		var out []string
-		for _, fd := range f.Check("notes/ENG-1.md", text) {
-			out = append(out, fd.String())
-		}
-		return out
-	}
-	head := "---\nitem: ENG-1\ninputs: " + f.items["ENG-1"].Pack + "\n---\n"
-	var body strings.Builder
-	for _, s := range NoteSections {
-		body.WriteString("\n## " + s + "\n\nShipped fast search [[ENG-1]] with [[app#5]] and [[app@c1]], see [[doc+100]], [[adr+app+0001-use-queues]] and [[ENG-4]].\n")
-	}
-	check(t, "a good note", run(head+body.String()), []string(nil))
-	check(t, "a good note with Windows line endings", run(strings.ReplaceAll(head+body.String(), "\n", "\r\n")), []string(nil))
-	var names strings.Builder
-	for _, s := range NoteSections {
-		names.WriteString("\n## " + s + "\n\nMoved Office 365 tenants to Angular 9 and .NET 10 [[ENG-1]], fixing HTTP 429 errors in version 2.\n" +
-			"Angular 9, C# 12, Node 18 and Windows 11.\n\n- Python 3\n- Storybook (CSF 3.0 stories and docs pages)\n")
-	}
-	check(t, "versions and names are not counts", run(head+names.String()), []string(nil))
-	for _, f := range run(head + "\n## Summary\n\nI upgraded the monorepo to\nAngular 15 and the library too.\n" +
-		"Office 365 tenants could connect.\n\n- Angular 15 upgrade for the library.\n") {
-		if strings.Contains(f, "no counts") {
-			t.Errorf("a name that opens a line or sentence was flagged: %s", f)
-		}
-	}
-	counts := run(head + "\n## Summary\n\nMerged 12 PRs. Led 4 people, and I wrote 3 docs.\nI rebuilt Storybook 12 times.\n" +
-		"TypeScript 1,200 lines, Jira 9 issues, Confluence 5 pages and ADR 2 docs.\n")
-	for _, n := range []string{`"12"`, `"4"`, `"3"`, `"1,200"`, `"9"`, `"5"`, `"2"`} {
-		if !strings.Contains(strings.Join(counts, "\n"), n+": a note carries no counts") {
-			t.Errorf("no count warning for %s:\n%s", n, strings.Join(counts, "\n"))
-		}
-	}
-	got := run(head + "\n## Summary\n\nAlso [[ENG-2]] and [[ENG-404]], in 12 PRs.\n")
-	if len(got) < 3 || !strings.Contains(strings.Join(got, "\n"), "[[ENG-2]] is not part of ENG-1's evidence") ||
-		!strings.Contains(strings.Join(got, "\n"), "[[ENG-404]] names nothing") || !strings.Contains(strings.Join(got, "\n"), `"12": a note carries no counts`) ||
-		!strings.Contains(strings.Join(got, "\n"), "missing section: ## What I did") {
-		t.Errorf("findings:\n%s", strings.Join(got, "\n"))
-	}
-
-	draft := "---\nwindow: 2024-01-01..2024-12-31\n---\n\n" +
-		"I merged 2 PRs and about 6 commits, and finished [[ENG-1]] with its 2 sub-tasks.\n\n" +
-		"I mentored 4 people, cut 40% of the time, and upgraded to Go 1.22 on 2024-03-01.\n\n" +
-		"See https://tracker.example/browse/ENG-1 and https://tracker.example/browse/ENG-999 and ENG-77.\n"
-	var findings []string
-	for _, fd := range f.Check("draft.md", draft) {
-		findings = append(findings, fd.String())
-	}
-	want := []string{
-		`7: warning: "4" matches no fact in scope`, `7: warning: "40%" is derived`, // Go 1.22 is a version
-		"9: warning: https://tracker.example/browse/ENG-999 is not in the dataset", "9: warning: ENG-77 is not in the dataset",
-	}
-	if len(findings) != len(want) {
-		t.Errorf("findings:\n%s", strings.Join(findings, "\n"))
-	}
-	for i := range want {
-		if i < len(findings) && !strings.HasPrefix(findings[i], want[i]) {
-			t.Errorf("finding %d = %q, want prefix %q", i, findings[i], want[i])
-		}
-	}
-	adr := f.items["adr+app+0001-use-queues"]
-	var adrNote []string
-	for _, fd := range f.Check("notes/adr+app+0001-use-queues.md", "---\nitem: "+adr.ID+"\ninputs: "+adr.Pack+"\n---\n"+
-		strings.ReplaceAll(body.String(), "[[doc+100]], ", "")) {
-		adrNote = append(adrNote, fd.String())
-	}
-	if s := strings.Join(adrNote, "\n"); !strings.Contains(s, "[[ENG-4]] is not part of") || strings.Contains(s, "[[app#5]]") ||
-		strings.Contains(s, "[[app@c1]]") || strings.Contains(s, "[[ENG-1]]") {
-		t.Errorf("a note on an ADR cites the changes that wrote it, and the items they count toward:\n%s", s)
-	}
-	text := "---\nwindow: all\n---\n\nShipped search [[ENG-1]], and [[app#5|the PR]].\n"
-	check(t, "plain", f.Final(text, false), "Shipped search, and the PR.\n")
-	check(t, "links", f.Final(text, true), "Shipped search [ENG-1](https://tracker.example/browse/ENG-1), and [the PR](https://code.example/org/app/pull/5).\n")
-}
-
-// The same dataset, notes and context give the same bytes, whatever order the records come in.
-func TestReviews(t *testing.T) {
-	f := build(t, fixture(), Inputs{})
-	var refs []string
-	for _, r := range f.Reviews {
-		refs = append(refs, r.Ref+" "+r.AuthorClass+" "+r.Item)
-	}
-	check(t, "reviews, and the items they count toward", refs, []string{
-		"review+app#21 colleague ENG-1", "review+app#22 bot ", "review+app#23 colleague ", "review+app#24 colleague "})
-	r := f.reviews["review+app#21"]
-	check(t, "a review's counts", []any{r.Reviews, r.Comments, r.Words, r.First, r.Last, r.did()},
-		[]any{ReviewStates{Approved: 1, ChangesRequested: 1}, 2, 8, "2024-01-10", "2024-01-11", "changes requested, approved; 2 comments"})
-
-	it := f.items["ENG-1"]
-	check(t, "an item lists the reviews naming it", it.Reviews, []string{"review+app#21"})
-	check(t, "reviews count in an item's totals", []int{it.Totals.PRsReviewed, it.Totals.ChangesRequested, it.Totals.ReviewComments}, []int{1, 1, 2})
-	for _, d := range it.days {
-		if d == "2024-01-10" || d == "2024-01-11" {
-			t.Errorf("review days are not the item's: %v", it.days)
-		}
-	}
-	all := activeDays(f.events, All)
-	if !slices.Contains(all, "2024-01-10") || !slices.Contains(all, "2024-04-05") {
-		t.Errorf("review days are the user's active days: %v", all)
-	}
-	pack := string(renderPack(it.pack, it.Pack))
-	if !strings.Contains(pack, "## Your reviews of others' PRs naming it (their work, not yours)\n\n"+
-		"- 2024-01-10 review+app#21 · changes requested, approved; 2 comments · by a colleague · theirs 21: Needs a backoff before retrying / cap this / thanks\n") {
-		t.Errorf("pack:\n%s", pack)
-	}
-	if strings.Contains(string(renderPack(f.items["ENG-2"].pack, "")), "reviews") {
-		t.Error("a pack without reviews mentions them")
-	}
-	if b, _ := json.Marshal(f.items["ENG-2"].pack); strings.Contains(string(b), `"reviews"`) {
-		t.Error("a pack without reviews has a reviews field, which changes its hash")
-	}
-
-	head := "---\nitem: ENG-1\ninputs: " + it.Pack + "\n---\n"
-	var body strings.Builder
-	for _, s := range NoteSections {
-		body.WriteString("\n## " + s + "\n\nReviewed [[review+app#21]], not [[review+app#24]].\n")
-	}
-	findings := f.Check("notes/ENG-1.md", head+body.String())
-	if len(findings) == 0 || !strings.Contains(findings[0].String(), "review+app#24") || strings.Contains(fmt.Sprint(findings), "review+app#21") {
-		t.Errorf("findings: %v", findings)
-	}
-	final := f.Final("---\nwindow: all\n---\nI reviewed 2 PRs by 2 people [[review+app#21]].\n", true)
-	check(t, "a review links to its PR", final, "I reviewed 2 PRs by 2 people [review+app#21](https://code.example/org/app/pull/21).\n")
-	if fd := f.Check("draft.md", "---\nwindow: all\n---\nI reviewed 2 PRs and asked for changes once, in 2 comments [[review+app#21]].\n"); len(fd) > 0 {
-		t.Errorf("review numbers in scope: %v", fd)
-	}
-
-	check(t, "not collected, once reviews are", f.Summary(All).Coverage.NotCollected[0], reviewsNotCollected)
-	raw := fixture()
-	raw.Reviews, raw.ReviewsRan = nil, false
-	check(t, "not collected, before", build(t, raw, Inputs{}).Summary(All).Coverage.NotCollected[0], notCollected[0])
-}
-
-func TestTechnologies(t *testing.T) {
-	raw := fixture()
-	raw.Commits = append(raw.Commits,
-		commit("c20", "2024-06-01T10:00:00Z", jane, []string{"author", "committer"}, "ship it", func(c *collect.Commit) {
-			c.Files = []collect.FileChange{file("Dockerfile", 5, 0), file("web/card.stories.tsx", 40, 1), file("README.md", 3, 0)}
-		}),
-		commit("c21", "2024-06-02T10:00:00Z", other, []string{"co-author"}, "theirs\n\nCo-authored-by: Jane Doe <jane@example.com>",
-			func(c *collect.Commit) { c.Files = []collect.FileChange{file("web/x.rs", 500, 0)} }),
-	)
-	f := build(t, raw, Inputs{})
-	var names []string
-	for _, tc := range f.Technologies {
-		names = append(names, tc.Name)
-	}
-	check(t, "technologies, most days first; co-authored and excluded files left out", names, []string{"Go", "Storybook", "TypeScript", "Docker"})
-	g := f.technologies["Go"]
-	check(t, "Go", []any{g.Category, g.Significant, g.First, g.Last, g.Totals, g.Repos, g.Items},
-		[]any{"language", true, "2024-01-02", "2024-02-01",
-			TechTotals{Changes: 3, LinesAdded: 60, LinesDeleted: 7, Files: 3, ActiveDays: 4, Repos: 1}, []string{"app"}, []string{"ENG-1", "ENG-2"}})
-	check(t, "Go by year", g.ByYear, []TechPeriod{{Period: "2024", Totals: g.Totals}})
-	check(t, "a tool used on one day is not significant", f.technologies["Docker"].Significant, false)
-	check(t, "a change's technologies, most lines first", f.changes["app@c20"].Technologies, []string{"Storybook", "TypeScript", "Docker"})
-	check(t, "an unlanded change has none", f.changes["app@c11"].Technologies, []string{})
-	check(t, "an item's", f.items["ENG-1"].Technologies, []string{"Go"})
-	check(t, "a repo's", f.Repos[0].Technologies, []string{"Go", "Storybook", "TypeScript", "Docker"})
-
-	w, _ := NewWindow("2024-01-01", "2024-01-31")
-	check(t, "a window's", f.Summary(w).Technologies, []TechSummary{{Name: "Go", Category: "language", Significant: true,
-		First: "2024-01-02", Last: "2024-01-04", Totals: TechTotals{Changes: 2, LinesAdded: 40, LinesDeleted: 7, Files: 2, ActiveDays: 3, Repos: 1}}})
-
-	draft := "---\nwindow: all\n---\nTypeScript: 40 lines.\n\nRust: 40 lines.\n\nTypeScript, with 40 people.\n\nGo in 2024: 60 lines.\n"
-	var findings []string
-	for _, fd := range f.Check("draft.md", draft) {
-		findings = append(findings, fd.String())
-	}
-	check(t, "a technology's numbers, for what they measure", len(findings), 2)
-	if len(findings) == 2 && (!strings.Contains(findings[0], "Rust: 40 lines") || !strings.Contains(findings[1], "40 people")) {
-		t.Errorf("findings: %v", findings)
-	}
-}
-
+// testFramework is a framework.md with every kind of marker, and a problem of each kind; the framework
+// tests and TestDeterministic read it.
 const testFramework = "# Framework\n\n## Competencies\n\n" +
 	"- **Code {#code}:** Write clean code.\n" +
 	"- **Quality {#quality reviews}:** Drive best practices via code reviews.\n\n" +
@@ -660,114 +376,7 @@ const testFramework = "# Framework\n\n## Competencies\n\n" +
 	"| Testing {#testing} | Writes tests | Drives the test strategy |\n| Other | x | y |\n\n" +
 	"- Code again {#code}\n\n```\n{level=fenced}\n```\n\n- a stray {level=oops}\n"
 
-func TestFramework(t *testing.T) {
-	fw := parseFramework(testFramework)
-	var got []string
-	for _, c := range fw.criteria {
-		got = append(got, fmt.Sprintf("%s|%s|%s|%v", c.ID, c.Level, c.Text, c.Reviews))
-	}
-	check(t, "criteria", got, []string{
-		"code||Code: Write clean code.|false",
-		"quality||Quality: Drive best practices via code reviews.|true",
-		"senior-coach|senior|Coach on technical practices.|false",
-		"senior-process|senior|Drive process improvements.|false",
-		"lead-streams|lead|Lead work-streams.|false",
-		"testing@applying|applying|Testing: Writes tests|false",
-		"testing@leading|leading|Testing: Drives the test strategy|false",
-	})
-	check(t, "problems", fw.problems, []string{"line 24: code is marked twice; the first counts",
-		"line 30: {level=oops} is not on a heading or a table's header row"})
-	check(t, "Windows line endings, same hash", parseFramework(strings.ReplaceAll(testFramework, "\n", "\r\n")).hash, fw.hash)
-	if parseFramework(strings.Replace(testFramework, "clean code", "clean, tested code", 1)).hash == fw.hash {
-		t.Error("rewording a criterion keeps the hash")
-	}
-	f := build(t, fixture(), Inputs{})
-	f.framework = parseFramework("# Framework\n")
-	if s := f.frameworkSummary(All); s.Untagged != 0 || s.Criteria != 0 || strings.Contains(string(f.criteriaDoc(All)), "Provisional") {
-		t.Errorf("with nothing marked, no note is untagged: %+v", s)
-	}
-	check(t, "nothing marked", parseFramework("# Framework\n\n- Code\n").problems,
-		[]string{"no criteria are marked: add {#<id>} to the competencies and expectations to map evidence to"})
-}
-
-func TestCoverage(t *testing.T) {
-	dir := t.TempDir()
-	notes, ctx := filepath.Join(dir, "notes"), filepath.Join(dir, "context")
-	put := func(p, text string) {
-		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(p, []byte(text), 0o644); err != nil {
-			t.Fatal(err)
-		}
-	}
-	put(filepath.Join(ctx, "framework.md"), testFramework)
-	put(filepath.Join(ctx, "evidence", "mentoring.md"), "---\nwhen: 2024-06-01\nshows: senior-coach\n---\nI mentored a new starter for 3 months.\n")
-	put(filepath.Join(ctx, "evidence", "undated.md"), "---\nshows: code\n---\nno date\n")
-	first := build(t, fixture(), Inputs{})
-	hash := parseFramework(testFramework).hash
-	var sections strings.Builder
-	for _, s := range NoteSections {
-		sections.WriteString("\n## " + s + "\n\nWork.\n")
-	}
-	note := func(id, front string) {
-		put(filepath.Join(notes, itemPath(id)+".md"), "---\nitem: "+id+"\ninputs: "+first.items[id].Pack+"\n"+front+"---\n"+sections.String())
-	}
-	note("ENG-1", "shows: code, senior-coach\nframework: "+hash+"\n")
-	note("ENG-2", "shows: code\nframework: "+hash+"\n")
-	note("repo+app+2024q2", "") // current, and not tagged yet
-	f := build(t, fixture(), Inputs{NotesDir: notes, ContextDir: ctx})
-
-	status := map[string]string{}
-	for _, cc := range f.coverage(All) {
-		status[cc.ID] = fmt.Sprintf("%s %v %v %d %d", cc.Status, cc.Items, cc.Evidence, cc.Reviews, cc.Quarters)
-	}
-	check(t, "coverage", status, map[string]string{
-		"code":             "thin [ENG-1 ENG-2] [] 0 1",
-		"quality":          "thin [] [] 2 1",
-		"senior-coach":     "covered [ENG-1] [evidence+mentoring] 0 2",
-		"senior-process":   "none [] [] 0 0",
-		"lead-streams":     "none [] [] 0 0",
-		"testing@applying": "none [] [] 0 0",
-		"testing@leading":  "none [] [] 0 0",
-	})
-	w, _ := NewWindow("2024-01-01", "2024-03-31")
-	for _, cc := range f.coverage(w) {
-		if cc.ID == "senior-coach" {
-			check(t, "in a window, evidence outside it does not count", []any{cc.Status, cc.Evidence}, []any{CoverageThin, []string{}})
-		}
-	}
-	s := f.Summary(All).Framework
-	check(t, "summary", []any{s.Criteria, s.Tagged, s.Untagged, s.ByStatus, len(s.Problems)},
-		[]any{7, 2, 1, map[string]int{CoverageNone: 4, CoverageThin: 2, CoverageCovered: 1}, 3})
-	check(t, "an item's tags", f.items["ENG-1"].Shows, []string{"code", "senior-coach"})
-	check(t, "tags.txt", string(f.tagsTodo()), "untagged\trepo+app+2024q2\tS\t2024-04-01..2024-05-01\tapp: work naming no issue, 2024Q2\n")
-	doc := string(f.criteriaDoc(All))
-	for _, want := range []string{"## Any level\n", "## senior\n", "| none | `senior-process` Drive process improvements. |  | 0 |",
-		"| covered | `senior-coach` Coach on technical practices. | ENG-1, evidence+mentoring | 2 |", "| thin | `quality`", "2 reviews",
-		"**Provisional:** 1 current notes"} {
-		if !strings.Contains(doc, want) {
-			t.Errorf("criteria.md has no %q:\n%s", want, doc)
-		}
-	}
-
-	var findings []string
-	for _, fd := range f.Check("notes/ENG-1.md", "---\nitem: ENG-1\ninputs: "+f.items["ENG-1"].Pack+"\nshows: code, mentoring\nframework: sha256:old\n---\n"+sections.String()) {
-		findings = append(findings, fd.String())
-	}
-	check(t, "a note's tags checked", findings, []string{
-		"6: warning: tagged against an earlier framework: check its shows: against criteria.md, then set framework: " + hash,
-		"6: error: shows: mentoring is not a criterion of context/framework.md (criteria.md lists them)",
-	})
-	if fd := f.Check("draft.md", "---\nwindow: all\n---\nI mentored a starter for 3 months [[evidence+mentoring]].\n"); len(fd) > 0 {
-		t.Errorf("an evidence file is citable, with its numbers in scope: %v", fd)
-	}
-	if fd := build(t, fixture(), Inputs{NotesDir: notes}).Check("notes/ENG-1.md", "---\nitem: ENG-1\ninputs: x\nshows: code\n---\n"+sections.String()); len(fd) < 2 ||
-		!strings.Contains(fd[1].String(), "marks none") {
-		t.Errorf("tags without a framework: %v", fd)
-	}
-}
-
+// The same dataset, notes and context give the same bytes, whatever order the records come in.
 func TestDeterministic(t *testing.T) {
 	ctx := t.TempDir()
 	for name, text := range map[string]string{"framework.md": testFramework,
@@ -823,79 +432,32 @@ func TestDeterministic(t *testing.T) {
 	}
 }
 
-// Load reads what the collection stages write, through index.json, dot-directories included.
-func TestLoad(t *testing.T) {
-	dir := t.TempDir()
-	raw := fixture()
-	write := func(rel string, v any, lines bool) {
-		p := filepath.Join(dir, rel)
-		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
-			t.Fatal(err)
-		}
-		var b bytes.Buffer
-		enc := json.NewEncoder(&b)
-		if lines {
-			for _, row := range reflectRows(v) {
-				_ = enc.Encode(row)
-			}
-		} else {
-			_ = enc.Encode(v)
-		}
-		if err := os.WriteFile(p, b.Bytes(), 0o644); err != nil {
-			t.Fatal(err)
-		}
-	}
-	raw.Index.Repos[0].Dir = "repos/.app"
-	raw.Index.Repos[0].Files = map[string]string{"commits": "repos/.app/commits.jsonl", "prs": "repos/.app/prs.jsonl",
-		"decisions": "repos/.app/decisions.jsonl", "reviews": "repos/.app/reviews.jsonl"}
-	// a repo without PRs: the index lists no prs file for it
-	lib := commit("l1", "2024-01-02T10:00:00Z", jane, []string{"author", "committer"}, "lib work", func(c *collect.Commit) { c.Repo = "lib" })
-	raw.Index.Repos = append(raw.Index.Repos, collect.IndexRepo{Name: "lib", Dir: "repos/lib", Files: map[string]string{"commits": "repos/lib/commits.jsonl"}})
-	write("repos/lib/project.json", collect.Project{Name: "lib"}, false)
-	write("repos/lib/commits.jsonl", []collect.Commit{lib}, true)
-	raw.Index.IssuesByProject = []collect.IndexGroup{{Key: "ENG", File: "issues/ENG.jsonl"}}
-	raw.Index.WikiBySpace = []collect.IndexGroup{{Key: "ENG", File: "wiki/ENG.jsonl"}}
-	write("index.json", raw.Index, false)
-	write("repos/.app/project.json", raw.Projects[0], false)
-	write("repos/.app/commits.jsonl", raw.Commits, true)
-	write("repos/.app/prs.jsonl", raw.PRs, true)
-	write("repos/.app/decisions.jsonl", raw.Decisions, true)
-	write("repos/.app/reviews.jsonl", raw.Reviews, true)
-	write("org/reviews.json", collect.ReviewsSummary{PRs: len(raw.Reviews)}, false)
-	write("issues/ENG.jsonl", raw.Issues, true)
-	write("wiki/ENG.jsonl", raw.Pages, true)
-	write("org/issue_projects.json", raw.IssueProjects, false)
-	got, err := Load(dir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	check(t, "loaded", []int{len(got.Projects), len(got.Commits), len(got.PRs), len(got.Decisions), len(got.Issues), len(got.Pages), len(got.IssueProjects), len(got.Reviews)},
-		[]int{2, len(raw.Commits) + 1, len(raw.PRs), len(raw.Decisions), len(raw.Issues), len(raw.Pages), 1, len(raw.Reviews)})
-	check(t, "the reviews stage ran", got.ReviewsRan, true)
-	if _, err := Load(t.TempDir()); err == nil || !strings.Contains(err.Error(), "no index.json") {
-		t.Errorf("want a clear error without a dataset, got %v", err)
-	}
+func TestSortedSet(t *testing.T) {
+	check(t, "natural order", sortedSet(map[string]bool{"ENG-10": true, "ENG-2": true, "app#5": true}), []string{"ENG-2", "ENG-10", "app#5"})
+	check(t, "never nil", sortedSet(nil), []string{})
+	check(t, "deref", []any{deref[int](nil), deref(ptr("x"))}, []any{0, "x"})
 }
 
-func reflectRows(v any) []any {
-	rv := reflect.ValueOf(v)
-	rows := make([]any, rv.Len())
-	for i := range rows {
-		rows[i] = rv.Index(i).Interface()
-	}
-	return rows
+// An event without a time (an unreadable timestamp) counts toward nothing.
+func TestEmit(t *testing.T) {
+	f := &Facts{}
+	f.emit(event{kind: evCommit})
+	f.emit(event{at: mustTime(t, "2024-01-01"), kind: evCommit})
+	check(t, "events", kinds(f.events), []string{evCommit})
 }
 
-func TestFrontmatter(t *testing.T) {
-	for _, nl := range []string{"\n", "\r\n"} {
-		text := strings.ReplaceAll("---\nitem: ENG-1\ninputs: \"sha256:x\"\n---\n\n## Summary\n", "\n", nl)
-		front, body, ok := Frontmatter(text)
-		check(t, fmt.Sprintf("frontmatter, lines ending %q", nl), []any{ok, front, body},
-			[]any{true, map[string]string{"item": "ENG-1", "inputs": "sha256:x"}, nl + "## Summary" + nl})
+// Build reads notes and context from directories that may be absent, but not unreadable.
+func TestBuildInputs(t *testing.T) {
+	missing := filepath.Join(t.TempDir(), "missing")
+	if _, err := Build(fixture(), Inputs{NotesDir: missing, ContextDir: missing}); err != nil {
+		t.Errorf("Build with absent notes and context: %v", err)
 	}
-	for _, text := range []string{"no frontmatter\n", "---\nitem: ENG-1\nnever closed\n"} {
-		if _, body, ok := Frontmatter(text); ok || body != text {
-			t.Errorf("Frontmatter(%q) = %q, %v; want the text back, false", text, body, ok)
+	notADir := writeFile(t, t.TempDir(), "file", "x")
+	for name, in := range map[string]Inputs{"notes": {NotesDir: notADir}, "context": {ContextDir: notADir}} {
+		if _, err := Build(fixture(), in); err == nil {
+			t.Errorf("Build with a file for its %s directory: nil error", name)
 		}
 	}
+	f := build(t, &Raw{}, Inputs{})
+	check(t, "an empty dataset", []int{len(f.Changes), len(f.Items), len(f.Docs), len(f.Repos)}, []int{0, 0, 0, 0})
 }

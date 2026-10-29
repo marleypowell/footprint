@@ -1,11 +1,13 @@
 package github
 
 import (
+	"context"
+	"encoding/json"
+	"io"
 	"net/http"
+	"net/http/httptest"
 	"reflect"
-	"strconv"
 	"testing"
-	"time"
 
 	"github.com/marleypowell/footprint/internal/codehost"
 )
@@ -17,6 +19,70 @@ func testHost(t *testing.T) *Host {
 		t.Fatal(err)
 	}
 	return h
+}
+
+// The API tests talk to in-memory fakes of GitHub: the client's transport hands each request
+// straight to an http.Handler through an httptest.ResponseRecorder, so no test touches the network
+// or needs a token, and requests still go to https://api.github.com as in production. (The tests
+// that wait run in a testing/synctest bubble, where a real httptest.Server would not do: a goroutine
+// reading a socket keeps the bubble's fake clock from moving.)
+
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
+
+// serve is a transport that answers every request with h.
+func serve(h http.Handler) http.RoundTripper {
+	return roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		if r.Body == nil { // as a server sees a request without one
+			r = r.Clone(r.Context())
+			r.Body = http.NoBody
+		}
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, r)
+		return rec.Result(), nil
+	})
+}
+
+// fakeClient is an API client with the token "test-token", sending its requests to h.
+func fakeClient(h http.Handler) *client {
+	return &client{http: &http.Client{Transport: serve(h)}, token: "test-token"}
+}
+
+// fakeHost is the adapter for org acme with its API client already made, talking to h, so it never
+// looks for a token or runs gh.
+func fakeHost(t *testing.T, h http.Handler) *Host {
+	t.Helper()
+	host := testHost(t)
+	host.once.Do(func() { host.api = fakeClient(h) })
+	return host
+}
+
+// gqlRequest is a GraphQL request as the fake API receives it.
+type gqlRequest struct {
+	Query     string         `json:"query"`
+	Variables map[string]any `json:"variables"`
+}
+
+// fakeGraphQL answers POST /graphql with the JSON that respond returns for each request, and
+// records the requests in order.
+func fakeGraphQL(t *testing.T, respond func(req gqlRequest) string) (http.Handler, *[]gqlRequest) {
+	t.Helper()
+	var requests []gqlRequest
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.URL.Path != "/graphql" {
+			t.Errorf("unexpected request %s %s", r.Method, r.URL)
+			http.NotFound(w, r)
+			return
+		}
+		body, _ := io.ReadAll(r.Body)
+		var req gqlRequest
+		if err := json.Unmarshal(body, &req); err != nil {
+			t.Errorf("request body is not a GraphQL request: %v", err)
+		}
+		requests = append(requests, req)
+		io.WriteString(w, respond(req))
+	}), &requests
 }
 
 func TestPullRequestNumbers(t *testing.T) {
@@ -97,35 +163,33 @@ func TestConventions(t *testing.T) {
 	}
 }
 
-func TestRetryWait(t *testing.T) {
-	response := func(status int, headers map[string]string) *http.Response {
-		r := &http.Response{StatusCode: status, Header: http.Header{}}
-		for k, v := range headers {
-			r.Header.Set(k, v)
-		}
-		return r
-	}
-	reset := strconv.FormatInt(time.Now().Add(90*time.Second).Unix(), 10)
+// Account reads GET /user, and derives the two noreply addresses GitHub commits web edits as from
+// the id and the lowercased login. A profile without a name leaves Name empty.
+func TestAccount(t *testing.T) {
 	tests := []struct {
-		name     string
-		resp     *http.Response
-		body     string
-		min, max time.Duration
+		name, user string
+		want       codehost.Account
 	}{
-		{"Retry-After wins", response(403, map[string]string{"Retry-After": "30"}), "secondary rate limit", 31 * time.Second, 31 * time.Second},
-		{"primary limit waits for the reset", response(403, map[string]string{"X-RateLimit-Remaining": "0", "X-RateLimit-Reset": reset}),
-			"API rate limit exceeded", 80 * time.Second, 92 * time.Second},
-		{"secondary limit backs off", response(403, nil), "You have exceeded a secondary rate limit", time.Minute, time.Minute},
-		{"server errors back off", response(502, nil), "<html>Bad Gateway</html>", time.Minute, time.Minute},
-		{"other client errors fail", response(404, nil), "Not Found", 0, 0},
-		{"forbidden without a rate limit fails", response(403, nil), "Resource not accessible", 0, 0},
+		{"named", `{"login": "JDoe", "id": 1234, "name": "Jane Doe", "created_at": "2015-06-01T00:00:00Z"}`,
+			codehost.Account{Login: "JDoe", ID: 1234, Name: "Jane Doe", CreatedAt: "2015-06-01T00:00:00Z",
+				NoReplyEmails: []string{"1234+jdoe@users.noreply.github.com", "jdoe@users.noreply.github.com"}}},
+		{"no name", `{"login": "jdoe", "id": 7, "name": null, "created_at": "2015-06-01T00:00:00Z"}`,
+			codehost.Account{Login: "jdoe", ID: 7, CreatedAt: "2015-06-01T00:00:00Z",
+				NoReplyEmails: []string{"7+jdoe@users.noreply.github.com", "jdoe@users.noreply.github.com"}}},
 	}
 	for _, tt := range tests {
-		if got := retryWait(tt.resp, []byte(tt.body), 1); got < tt.min || got > tt.max {
-			t.Errorf("%s: wait %s, want %s..%s", tt.name, got, tt.min, tt.max)
+		h := fakeHost(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.Method != http.MethodGet || r.URL.Path != "/user" {
+				t.Errorf("%s: unexpected request %s %s", tt.name, r.Method, r.URL)
+			}
+			io.WriteString(w, tt.user)
+		}))
+		got, err := h.Account(context.Background())
+		if err != nil {
+			t.Fatalf("%s: %v", tt.name, err)
 		}
-	}
-	if backoff(9) != 5*time.Minute {
-		t.Error("backoff is capped at five minutes")
+		if !reflect.DeepEqual(got, tt.want) {
+			t.Errorf("%s: Account() = %+v, want %+v", tt.name, got, tt.want)
+		}
 	}
 }

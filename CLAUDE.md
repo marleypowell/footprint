@@ -35,6 +35,13 @@ flags and config are in `README.md`.
   `Tools.Tracker` / `Tools.Wiki` (no issue keys, the `issues` / `pages` stage skipped).
 - Verify changes with `go test ./...`. `TestPipeline` runs every stage offline through the in-memory
   adapters in `internal/collect/fakes_test.go`, over real git repos.
+- Every `.go` file has a sibling `<name>_test.go` with unit tests of that file's code, added or
+  extended in the same change. They are how a reader learns what the file decides, so write them to
+  read as its spec: behaviour-named, table-driven cases that show the rules and edge cases. The only
+  exceptions are files with nothing to unit-test (types and interfaces only). Shared fixtures and
+  fakes live in the package's existing helper test files.
+- Each top-level `internal/` dir has a `README.md` giving its purpose, boundaries and test approach.
+  Update it only when one of those changes. Its files and functions are documented in the code.
 - `internal/facts` is the code half of aggregation: pure and offline (it reads `data/raw`,
   `data/notes` and `data/context`, never config, tokens or mirrors). What counts is decided there,
   not in the skill or an agent's ad hoc queries. `docs/facts-schema.md` is its contract (embedded;

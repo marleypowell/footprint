@@ -8,7 +8,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"reflect"
-	"slices"
 	"sort"
 	"strings"
 	"testing"
@@ -494,50 +493,4 @@ func TestPipeline(t *testing.T) {
 	}
 	read("org/reviews.json", &reviewSummary)
 	check("no reviews", reviewSummary.PRs, 0)
-}
-
-// When the tracker loads none of the issues, the stage fails and keeps the previous files.
-func TestIssuesKeepsDataWhenNothingLoads(t *testing.T) {
-	raw := t.TempDir()
-	previous := filepath.Join(raw, "issues", "ENG.jsonl")
-	if err := writeFileAtomic(previous, []byte(`{"key":"ENG-1"}`+"\n")); err != nil {
-		t.Fatal(err)
-	}
-	tr := &fakeTracker{account: tracker.Account{ID: "u-jane"}, assigned: []string{"ENG-1", "ENG-2"}}
-	h := &harness{raw: raw, tools: Tools{Tracker: tr}, id: &identity{emails: map[string]bool{}}}
-	if err := h.issues(context.Background()); err == nil || !strings.Contains(err.Error(), "none of the 2 issues") {
-		t.Errorf("want a refusal, got %v", err)
-	}
-	if !fileExists(previous) {
-		t.Error("the previous issues were removed")
-	}
-}
-
-func TestNaturalCompare(t *testing.T) {
-	keys := []string{"ENG-10", "ENG-9", "AB-100", "ENG-009", "ENG-1a", "ENG-1"}
-	slices.SortFunc(keys, NaturalCompare)
-	if want := []string{"AB-100", "ENG-1", "ENG-1a", "ENG-009", "ENG-9", "ENG-10"}; !reflect.DeepEqual(keys, want) {
-		t.Errorf("got %v, want %v", keys, want)
-	}
-}
-
-func TestFileName(t *testing.T) {
-	for key, want := range map[string]string{
-		"ENG": "ENG", "~557058:ab-c": "~557058_ab-c", "": "_", "..": "_..", "a/../b": "a_.._b",
-		"CON": "_CON", "aux": "_aux", "COM1": "_COM1", "LPT9": "_LPT9", "NUL.x": "_NUL.x",
-		"CONF": "CONF", "COM": "COM", "COM10": "COM10", "PRNT": "PRNT",
-	} {
-		if got := fileName(key); got != want {
-			t.Errorf("fileName(%q) = %q, want %q", key, got, want)
-		}
-	}
-}
-
-// Without a wiki in the config, the pages stage does nothing.
-func TestPagesWithoutWiki(t *testing.T) {
-	raw := t.TempDir()
-	h := &harness{raw: raw, tools: Tools{}}
-	if err := h.pages(context.Background()); err != nil || fileExists(filepath.Join(raw, "wiki")) {
-		t.Errorf("err %v; wiki/ written: %v", err, fileExists(filepath.Join(raw, "wiki")))
-	}
 }

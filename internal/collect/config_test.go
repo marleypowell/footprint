@@ -1,17 +1,12 @@
 package collect
 
 import (
-	"context"
 	"encoding/json"
 	"os"
 	"path/filepath"
 	"reflect"
-	"runtime"
 	"strings"
 	"testing"
-
-	"github.com/marleypowell/footprint"
-	"github.com/marleypowell/footprint/internal/codehost"
 )
 
 func TestLoadConfig(t *testing.T) {
@@ -58,91 +53,6 @@ func TestLoadConfig(t *testing.T) {
 		        "` + section + `": {"site": "x"}}`)
 		if _, err := LoadConfig(path); err == nil || !strings.Contains(err.Error(), section+".kind") {
 			t.Errorf("a %s section without a kind should be reported: %v", section, err)
-		}
-	}
-}
-
-func TestInit(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "config.json")
-	host := &fakeHost{attributed: []codehost.AttributedCommit{
-		{AuthorName: "Jane Doe", AuthorEmail: "Jane.Doe@Example.com"},
-		{AuthorName: "jane", AuthorEmail: "jane@laptop.local"},
-	}}
-	opts := Options{ConfigPath: path, Org: "org", CodeHost: "github"}
-	if err := Init(context.Background(), opts, host); err != nil {
-		t.Fatal(err)
-	}
-	cfg, err := LoadConfig(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if cfg.Login != "jdoe" || cfg.Org != "org" {
-		t.Errorf("login/org: %q %q", cfg.Login, cfg.Org)
-	}
-	if want := []string{"7-jdoe@users.noreply.code.example", "jane.doe@example.com", "jane@laptop.local"}; !reflect.DeepEqual(cfg.Identity.Emails, want) {
-		t.Errorf("emails = %v, want %v", cfg.Identity.Emails, want)
-	}
-	if want := []string{"Jane Doe", "jdoe"}; !reflect.DeepEqual(cfg.Identity.Names, want) {
-		t.Errorf("names = %v, want %v (single-word names are too ambiguous)", cfg.Identity.Names, want)
-	}
-	if cfg.Identity.DiscoveryPattern != "doe|jane|jdoe" {
-		t.Errorf("pattern = %q", cfg.Identity.DiscoveryPattern)
-	}
-	checkKindsOnly := func(cfg *Config) {
-		t.Helper()
-		if string(cfg.Catalog.Settings) != `{"kind":"backstage"}` || cfg.IssueTracker == nil || string(cfg.IssueTracker.Settings) != `{"kind":"jira"}` ||
-			cfg.Wiki == nil || string(cfg.Wiki.Settings) != `{"kind":"confluence"}` {
-			got, _ := json.Marshal(cfg)
-			t.Errorf("init --org %s should keep only the tool kinds: %s", cfg.Org, got)
-		}
-	}
-	checkKindsOnly(cfg)
-	if err := Init(context.Background(), opts, host); err == nil {
-		t.Error("init should refuse to overwrite without --force")
-	}
-
-	// The example's own org gets the kinds only too: its settings are placeholders.
-	var example Config
-	if err := json.Unmarshal(footprint.ExampleConfig, &example); err != nil {
-		t.Fatal(err)
-	}
-	opts.Org, opts.Force = example.Org, true
-	if err := Init(context.Background(), opts, host); err != nil {
-		t.Fatal(err)
-	}
-	if cfg, err = LoadConfig(path); err != nil {
-		t.Fatal(err)
-	}
-	checkKindsOnly(cfg)
-}
-
-func TestWriteUnderRefusesEscapes(t *testing.T) {
-	base := filepath.Join(t.TempDir(), "base")
-	escapes := []string{"../escape.txt", "/tmp/absolute.txt", "a/../../b.txt"}
-	if runtime.GOOS == "windows" { // ordinary file names elsewhere
-		escapes = append(escapes, `..\escape.txt`, `a/..\..\b.txt`, "C:/absolute.txt", "a:stream.txt", "aux/x.txt", "nul")
-	}
-	for _, p := range escapes {
-		if written, err := writeUnder(base, p, []byte("x")); written || err != nil {
-			t.Errorf("%q: written %v, %v", p, written, err)
-		}
-	}
-	if entries, _ := os.ReadDir(filepath.Dir(base)); len(entries) != 0 {
-		t.Fatalf("refused paths still wrote %v", entries)
-	}
-	if written, err := writeUnder(base, "docs/index.md", []byte("x")); !written || err != nil || !fileExists(filepath.Join(base, "docs", "index.md")) {
-		t.Errorf("normal path not written: %v", err)
-	}
-	// A device name with an extension is a device to some Windows versions and an ordinary file name
-	// to others (Windows 11): it is refused, or written as a file under base, never to the device.
-	for _, p := range []string{"nul.yaml", "con.txt"} {
-		written, err := writeUnder(base, p, []byte("x"))
-		if err != nil {
-			t.Errorf("%q: %v", p, err)
-			continue
-		}
-		if info, err := os.Lstat(filepath.Join(base, p)); written && (err != nil || !info.Mode().IsRegular()) {
-			t.Errorf("%q: written, but not as a file under base (%v)", p, err)
 		}
 	}
 }
