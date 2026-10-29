@@ -138,4 +138,15 @@ func TestReadJSONL(t *testing.T) {
 	if _, err := readJSONL[row](dir, "bad.jsonl"); err == nil || !strings.Contains(err.Error(), "bad.jsonl") {
 		t.Errorf("readJSONL(bad.jsonl) error = %v, want one naming the file", err)
 	}
+	// a failure that is not a bad row still fails, rather than ending the file early
+	writeFile(t, dir, "stray.jsonl", "{\"N\":1}\n]\n{\"N\":2}\n")
+	if rows, err := readJSONL[row](dir, "stray.jsonl"); err == nil {
+		t.Errorf("readJSONL(stray.jsonl) = %v, nil error; want one", rows)
+	}
+	if err := os.Mkdir(filepath.Join(dir, "dir.jsonl"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if rows, err := readJSONL[row](dir, "dir.jsonl"); err == nil { // a directory: not missing, unreadable
+		t.Errorf("readJSONL(a directory) = %v, nil error; want one", rows)
+	}
 }

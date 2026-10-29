@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -125,12 +126,15 @@ func readJSONL[T any](dir, name string) ([]T, error) {
 	defer f.Close()
 	var rows []T
 	dec := json.NewDecoder(f)
-	for dec.More() {
+	for {
 		var row T
-		if err := dec.Decode(&row); err != nil {
+		err := dec.Decode(&row)
+		if err == io.EOF { // only a clean end; a cut-off row is io.ErrUnexpectedEOF
+			return rows, nil
+		}
+		if err != nil {
 			return nil, fmt.Errorf("decoding %s: %w", path, err)
 		}
 		rows = append(rows, row)
 	}
-	return rows, nil
 }
