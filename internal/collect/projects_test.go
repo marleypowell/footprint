@@ -100,7 +100,7 @@ func TestSummarizeActivity(t *testing.T) {
 		t.Errorf("commits_by_roles = %v, want %v (most common first, ties as first seen)", objectEntries(a.CommitsByRoles), want)
 	}
 	dates := []string{deref(a.FirstAuthoredAt), deref(a.LastAuthoredAt), deref(a.FirstPRAt), deref(a.LastPRAt)}
-	if want := []string{"2024-01-15T09:00:00+00:00", "2024-06-30T23:30:00+00:00", "2023-12-01T00:00:00Z", "2024-02-01T00:00:00Z"}; !reflect.DeepEqual(dates, want) {
+	if want := []string{"2024-01-15T09:00:00+00:00", "2024-06-30T23:30:00+00:00", "2023-12-01T00:00:00+00:00", "2024-02-01T00:00:00+00:00"}; !reflect.DeepEqual(dates, want) {
 		t.Errorf("first/last authored, first/last PR = %q, want %q", dates, want)
 	}
 

@@ -647,9 +647,7 @@ func summarizeActivity(commits []Commit, prs []PullRequestRecord) Activity {
 			lastPR = p.CreatedAt
 		}
 	}
-	if firstPR != "" {
-		a.FirstPRAt, a.LastPRAt = &firstPR, &lastPR
-	}
+	a.FirstPRAt, a.LastPRAt = isoUTC(firstPR), isoUTC(lastPR)
 	a.IssueKeys = len(issues)
 	return a
 }
