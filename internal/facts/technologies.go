@@ -159,10 +159,13 @@ func (c *Change) use(name string) *techUse {
 
 // techTotals counts a technology over w: changes and lines by when the change landed, days as they
 // fell.
-func (f *Facts) techTotals(name string, w Window) TechTotals {
+func (f *Facts) techTotals(name string, w Window) TechTotals { return techTotalsOf(f.Changes, name, w) }
+
+// techTotalsOf counts a technology in some of the changes over w, as techTotals does.
+func techTotalsOf(changes []*Change, name string, w Window) TechTotals {
 	var t TechTotals
 	paths, repos, days := map[string]bool{}, map[string]bool{}, map[string]bool{}
-	for _, c := range f.Changes {
+	for _, c := range changes {
 		u := c.use(name)
 		if u == nil {
 			continue
@@ -274,6 +277,18 @@ func (f *Facts) techValues(text string, ws []Window) []int {
 		}
 	}
 	return vals
+}
+
+// techNamed finds a technology by any of its names, ignoring case; nil for none.
+func (f *Facts) techNamed(name string) *Technology {
+	for _, t := range f.Technologies {
+		for _, n := range tech.Names(t.Name) {
+			if strings.EqualFold(n, strings.TrimSpace(name)) {
+				return t
+			}
+		}
+	}
+	return nil
 }
 
 // namesTech says whether text names a technology, by any of its names, as a whole word.

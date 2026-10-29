@@ -177,3 +177,27 @@ func TestNamesTech(t *testing.T) {
 		}
 	}
 }
+
+// A technology is found by its name or an alias, in any case: the command line is not prose.
+func TestTechNamed(t *testing.T) {
+	f := techFacts(
+		techChange(t, "a", "2024-06-01T00:00:00Z", Self, "I", []string{"2024-06-01"}, newFileChange("a.go", 1, 0)),
+		techChange(t, "b", "2024-06-01T00:00:00Z", Self, "I", []string{"2024-06-01"}, newFileChange("Dockerfile", 1, 0)),
+	)
+	for _, tc := range []struct{ name, want string }{
+		{"Go", "Go"},
+		{"go", "Go"},
+		{"Golang", "Go"},
+		{" docker ", "Docker"},
+		{"TypeScript", ""}, // known to the table, but not in the user's changes
+		{"G", ""},
+	} {
+		got := ""
+		if tt := f.techNamed(tc.name); tt != nil {
+			got = tt.Name
+		}
+		if got != tc.want {
+			t.Errorf("techNamed(%q) = %q, want %q", tc.name, got, tc.want)
+		}
+	}
+}

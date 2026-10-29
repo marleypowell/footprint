@@ -288,3 +288,120 @@ func TestRunCheckMissingFile(t *testing.T) {
 		t.Errorf("runCheck(missing file) = %v, want an error naming it", err)
 	}
 }
+
+func TestRunCountRefusesBadArguments(t *testing.T) {
+	tests := []struct {
+		name     string
+		from, to string
+		args     []string
+		want     string
+	}{
+		{"words after count", "", "", []string{"lines"}, `count takes flags, not "lines"`},
+		{"half a window", "2024-01-01", "", nil, "give both -from and -to"},
+	}
+	for _, tt := range tests {
+		o := factsOpts(t)
+		o.from, o.to = tt.from, tt.to
+		// The arguments are checked before the data is read: there is none here.
+		err := runCount(filepath.Join(t.TempDir(), "missing"), o, tt.args)
+		if err == nil || !strings.Contains(err.Error(), tt.want) {
+			t.Errorf("runCount(%s) = %v, want an error with %q", tt.name, err, tt.want)
+		}
+	}
+}
+
+// count writes the totals of what the filters pick, and their breakdown, as JSON.
+func TestRunCountWritesTheTotals(t *testing.T) {
+	o := factsOpts(t)
+	o.from, o.to, o.repo, o.by = "2024-01-01", "2024-12-31", "pay", "item"
+	var err error
+	out := captureStdout(t, func() { err = runCount(newDataset(t), o, nil) })
+	if err != nil {
+		t.Fatalf("runCount = %v", err)
+	}
+	var got facts.Count[facts.Totals]
+	if err := json.Unmarshal([]byte(out), &got); err != nil {
+		t.Fatalf("runCount printed %q: %v", out, err)
+	}
+	if got.Window != "2024-01-01..2024-12-31" || got.Repo != "pay" || got.Totals.ChangesLanded != 1 || got.Totals.LinesAdded != 12 {
+		t.Errorf("runCount = %+v, want the window, the repo pay, and its 1 change of 12 lines", got)
+	}
+	if len(got.Groups) != 1 || got.Groups[0].Name != "repo+pay+2024q1" {
+		t.Errorf("runCount groups = %+v, want the one bucket", got.Groups)
+	}
+
+	o.repo = "nope"
+	if err := runCount(newDataset(t), o, nil); err == nil || !strings.Contains(err.Error(), `no repo "nope"`) {
+		t.Errorf("runCount(-repo nope) = %v, want an error naming the repo", err)
+	}
+}
+
+func TestRunSearchRefusesBadArguments(t *testing.T) {
+	tests := []struct {
+		name     string
+		from, to string
+		terms    []string
+		want     string
+	}{
+		{"nothing to look for", "", "", nil, "search needs terms or a filter"},
+		{"half a window", "", "2024-12-31", []string{"retry"}, "give both -from and -to"},
+	}
+	for _, tt := range tests {
+		o := factsOpts(t)
+		o.from, o.to = tt.from, tt.to
+		err := runSearch(filepath.Join(t.TempDir(), "missing"), o, tt.terms)
+		if err == nil || !strings.Contains(err.Error(), tt.want) {
+			t.Errorf("runSearch(%s) = %v, want an error with %q", tt.name, err, tt.want)
+		}
+	}
+}
+
+// search prints one tab-separated line per record: kind, id, item, first..last, title, link.
+func TestRunSearchListsTheRecords(t *testing.T) {
+	tests := []struct {
+		name  string
+		kind  string
+		terms []string
+		want  string
+	}{
+		{"a change by its message", "change", []string{"Declined", "retry"},
+			"change\t" + changeID + "\trepo+pay+2024q1\t2024-03-04..2024-03-04\tfeat: retry declined payments\t" + changeURL + "\n"},
+		{"nothing", "", []string{"ledger"}, ""},
+	}
+	for _, tt := range tests {
+		o := factsOpts(t)
+		o.kind = tt.kind
+		var err error
+		out := captureStdout(t, func() { err = runSearch(newDataset(t), o, tt.terms) })
+		if err != nil {
+			t.Fatalf("runSearch(%s) = %v", tt.name, err)
+		}
+		if out != tt.want {
+			t.Errorf("runSearch(%s) printed %q, want %q", tt.name, out, tt.want)
+		}
+	}
+}
+
+// count -tech writes a technology's totals instead of the user's.
+func TestRunCountTech(t *testing.T) {
+	o := factsOpts(t)
+	o.tech, o.by = "golang", "year"
+	var err error
+	out := captureStdout(t, func() { err = runCount(newDataset(t), o, nil) })
+	if err != nil {
+		t.Fatalf("runCount = %v", err)
+	}
+	var got facts.Count[facts.TechTotals]
+	if err := json.Unmarshal([]byte(out), &got); err != nil {
+		t.Fatalf("runCount printed %q: %v", out, err)
+	}
+	want := facts.TechTotals{Changes: 1, LinesAdded: 12, LinesDeleted: 3, Files: 1, ActiveDays: 1, Repos: 1}
+	if got.Tech != "Go" || got.Totals != want || len(got.Groups) != 1 || got.Groups[0].Name != "2024" {
+		t.Errorf("runCount(-tech golang -by year) = %+v, want Go's one change of 12 lines, in 2024", got)
+	}
+
+	o.tech = "Rust"
+	if err := runCount(newDataset(t), o, nil); err == nil || !strings.Contains(err.Error(), `no technology "Rust"`) {
+		t.Errorf("runCount(-tech Rust) = %v, want an error naming the technology", err)
+	}
+}

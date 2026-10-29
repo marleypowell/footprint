@@ -208,6 +208,9 @@ bin/footprint facts                                   # what counts and how much
 bin/footprint facts -from 2025-04-01 -to 2026-03-31   # ... and that window's view
 bin/footprint facts -since 2026-10-22                 # ... and the work to ask you about since then -> recent/
 bin/footprint check data/drafts/review.md             # citations and numbers in a note or draft
+bin/footprint count -repo pay -from 2025-01-01 -to 2025-12-31 -by quarter   # any slice's totals, as JSON
+bin/footprint count -tech TypeScript -from 2025-07-01 -to 2025-09-30 -by repo # a technology's
+bin/footprint search -kind item,doc "rate limit"      # the records that mention it, with their items
 ```
 
 - `facts` deduplicates the changes, groups the work into items (features under their epics, docs
@@ -218,6 +221,10 @@ bin/footprint check data/drafts/review.md             # citations and numbers in
   tools has ended.
 - The agent writes one note per work item, from its pack, in `data/notes/`; a note is reused until
   its pack changes. It drafts documents in `data/drafts/` from the notes and the facts.
+- `count` writes the totals facts.json reports for any window, repo or item (or, with `-tech`, a
+  technology's), broken down by year, quarter, repo or item, and `search` lists the items, issues, changes, docs and reviews whose text
+  mentions every term. Neither writes files: an answer's lookups and numbers come from code, not
+  from ad hoc queries over the files.
 - `check` fails a note or draft whose citations (`[[PAY-62]]`, `[[repo#123]]`) name nothing, and
   lists the numbers that match no fact. `-plain` or `-links` writes the version to share.
 - Your own words go in `data/context/`: `profile.md` (titles, dates, teams), `framework.md` (the
@@ -266,7 +273,7 @@ internal/envfile/       .env loading
 internal/doc/           raw documents: key-ordered JSON objects, YAML parsing
 internal/par/           bounded parallel work
 internal/logx/          progress logging
-internal/facts/         aggregation: the counting rules, work items, packs, note states, check
+internal/facts/         aggregation: the counting rules, work items, packs, note states, check, count, search
 internal/doctor/        completeness checks over a collected dataset
 internal/filekind/      written vs generated or vendored files
 internal/tech/          technologies named from file paths

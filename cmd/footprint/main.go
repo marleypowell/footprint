@@ -30,6 +30,8 @@ Usage:
                                       change when it is not (exits 1 when it is not)
   footprint [flags] facts             decide what counts, from the collected data -> <facts>/
   footprint [flags] check <file>...   check a note or draft against the facts
+  footprint [flags] count             count what the facts count, for a window, repo or item
+  footprint [flags] search <term>...  find the records that mention every term
 
 Stages, in the order "all" runs them:
   inventory   every repo in the org, with code host metadata  -> <data>/org/repos.json
@@ -60,13 +62,22 @@ user that the dataset lacks, with the emails to add), identities (variants that 
 identity.not_me dismisses the rest), issues (keys that failed to load), pages, mirror, stale
 (output older than what it was made from) and env.
 
-facts and check read only the collected data, the notes and the context (no config or tokens):
+facts, check, count and search read only the collected data, the notes and the context (no config
+or tokens):
   facts       work items, changes, issues, docs, repos and totals, with an evidence pack per
               item and the notes still to write; -from/-to also write that window's view
               (both days included)                             -> <facts>/, <facts>/windows/
   check       every [[citation]] must name a record (in a note: its item's), and every number
               should be a fact in scope or the user's own; -plain or -links also write
               <file>.final.md, with the citations removed or turned into links
+  count       the totals facts.json reports, for the events in -from..-to, -repo and -item
+              (an initiative's include its features'), or with -tech those technologies.jsonl
+              reports for a technology, broken down -by year, quarter, repo or item; JSON on
+              stdout
+  search      the items, issues, changes, docs and reviews whose ids, title and text (an
+              item's note, a change's description, a doc's body) have every term, ignoring
+              case, narrowed by -from..-to, -repo, -item and -kind; one per line on stdout:
+              kind, id, item, first..last, title, link (tab-separated)
 
 The code host, catalog, issue tracker and wiki are set in the config (code_host, catalog,
 issue_tracker, wiki; the last two are optional); supported: github, backstage, jira, confluence.
@@ -93,11 +104,16 @@ func main() {
 	flags.StringVar(&fo.dir, "facts", "data/facts", "facts: the output directory")
 	flags.StringVar(&fo.notes, "notes", "data/notes", "facts, check: the notes on work items, one <id>.md each")
 	flags.StringVar(&fo.context, "context", "data/context", "facts, check: the user's own words (profile, framework, items/<id>.md)")
-	flags.StringVar(&fo.from, "from", "", "facts: also write the window from this day (YYYY-MM-DD)")
-	flags.StringVar(&fo.to, "to", "", "facts: ... to this day, included")
+	flags.StringVar(&fo.from, "from", "", "facts: also write the window from this day (YYYY-MM-DD); count, search: look from this day")
+	flags.StringVar(&fo.to, "to", "", "facts, count, search: ... to this day, included")
 	flags.StringVar(&fo.since, "since", "", "facts: also write recent/: the work items to ask the user about since this day (YYYY-MM-DD)")
 	flags.BoolVar(&fo.plain, "plain", false, "check: also write <file>.final.md without the citations")
 	flags.BoolVar(&fo.links, "links", false, "check: also write <file>.final.md with the citations as links")
+	flags.StringVar(&fo.repo, "repo", "", "count, search: only what is in this repo")
+	flags.StringVar(&fo.item, "item", "", "count, search: only what counts toward this work item (an initiative's include its features')")
+	flags.StringVar(&fo.tech, "tech", "", "count: a technology's totals (by name or alias: TS, Golang) instead of the user's")
+	flags.StringVar(&fo.by, "by", "", "count: also break the totals down by year, quarter, repo or item")
+	flags.StringVar(&fo.kind, "kind", "", "search: only these kinds of record, comma-separated: item, issue, change, doc, review")
 	var doctorJSON bool
 	flags.BoolVar(&doctorJSON, "json", false, "doctor: write the report as JSON")
 	flags.Usage = func() {
@@ -142,6 +158,10 @@ func main() {
 		}
 	case "check":
 		err = runCheck(opts.DataDir, fo, stages[1:])
+	case "count":
+		err = runCount(opts.DataDir, fo, stages[1:])
+	case "search":
+		err = runSearch(opts.DataDir, fo, stages[1:])
 	case "doctor":
 		err = errors.New("run doctor on its own")
 		if len(stages) == 1 {

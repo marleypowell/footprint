@@ -343,6 +343,68 @@ sha), a doc (`doc+<id>`, `adr+<repo>+<name>`), a review of another person's PR
 - `-plain` writes `<file>.final.md` without the citations (a CV); `-links` with them as links. The
   draft stays the one to edit.
 
+## Count and search
+
+Two commands answer questions from the same facts without writing anything, so no number or
+lookup needs an ad hoc query over these files. Both build the facts as `footprint facts` does, and
+narrow by the same flags: `-from`/`-to` (a window, both days included), `-repo` (what is in a repo)
+and `-item` (a work item by its id or any key its issue has had; an initiative includes its
+features).
+
+`footprint count` writes, as JSON, the Totals of the events the flags pick, by the rules above:
+
+```
+window   "all", or "YYYY-MM-DD..YYYY-MM-DD"
+tech     the -tech's name, or ""
+repo     the -repo, or ""
+item     the -item's current id, or ""
+totals   Totals
+by       the -by: year, quarter, repo, item, or ""
+groups   [{name, totals}]: each year, quarter, repo or item with events, [] without -by
+```
+
+With no flags it is facts.json's `totals`; with `-from`/`-to`, that window's. An item's is its
+`totals` in items.jsonl, and a repo's (all time) its `totals` in repos.jsonl. A repo's events are
+its changes' and the reviews of PRs in it: issue and wiki activity has no repo, so `issues_done`
+and the page totals are 0 for one. `-by year` and `-by quarter` list the calendar periods with
+events, oldest first, as `by_year` and `by_quarter` do. `-by repo` and `-by item` group each event
+by its own repo or item (a feature's events are the feature's, not its initiative's), leave out the
+events with none, and list the most `active_days` first, then the most `changes_landed`, then by
+name.
+
+`-tech <name>` (a technology's name or alias, in any case: `ts`, `Golang`) counts that technology
+instead, by its rule above, in the changes the flags pick: those in the repo, and those counted
+toward the item (an initiative's features' too). `totals` and each group's are then the
+technology's (`changes`, `agent_changes`, `lines_added`, `lines_deleted`, `files`, `active_days`,
+`repos`), as `technologies.jsonl` and facts.json's `technologies` report them, and groups without it
+are left out. `-by repo` and `-by item` group the changes by their repo and item.
+
+`footprint search <term>...` lists the records whose text has every term, matched anywhere and
+ignoring case (a quoted phrase is one term). A record's text is its ids and title, and:
+
+| kind | also |
+|---|---|
+| `item` | its note, and the user's words on it in `context/items/<id>.md` |
+| `issue` | its previous keys and description |
+| `change` | a PR's description, or a commit's message |
+| `doc` | a page's labels and text, or an ADR's text |
+| `review` | the user's words on the PR |
+
+`-kind` keeps some kinds (comma-separated). A window keeps the records with the user's activity in
+it (an item's, as its window totals count it); `-repo` the records in the repo (an item's `repos`,
+an issue's changes', an ADR's; not wiki pages); `-item` the item's records (an initiative's
+features' too). With no terms, every record the flags keep is listed. One line per record,
+tab-separated:
+
+```
+kind  id  item  first..last  title  url
+```
+
+`id` is as a citation names it. `item` is the work item whose note and pack tell the record's
+story (an item's own id, an epic's initiative; empty for an issue, doc or review in none).
+`first..last` is the user's activity on it in the window, empty for none. Lines are by `first`
+(records with no activity last), then kind in the order of the table, then id.
+
 ## What the facts cannot say
 
 They count what the tools recorded. Blame is a view of where lines stand today, not of who made
