@@ -248,6 +248,40 @@ application's paper trail and interview preparation. Its steps only use the CLI 
 | `data/context/` | you, or the agent recording your words | profile, framework, corrections |
 | `data/drafts/` | the agent | documents; `check` writes `.final.md` beside them |
 
+## Several employers
+
+The dataset under `data/` is one job's. To keep past jobs' datasets beside it, and later make one
+career's documents from them all, list them in `careers.json` (personal, git-ignored), beside
+`config.json`:
+
+```json
+{"employers": [
+  {"id": "globex", "employer": "Globex", "from": "2022-09", "root": "data"},
+  {"id": "acme", "employer": "Acme Ltd", "from": "2019-03", "to": "2022-08", "root": "data/acme", "frozen": true},
+  {"id": "initech", "employer": "Initech", "from": "2015-01", "to": "2019-02"}
+]}
+```
+
+- `id` (lower case, digits and `-`; not `career`) names the employer on the command line, and will
+  prefix its citations in career documents (`[[acme:PAY-62]]`). `from` and `to` are months; leave
+  `to` out while you are there.
+- `root` is the dataset's directory, holding `raw/`, `facts/`, `notes/`, `context/` and `drafts/`.
+  The one at `data` keeps today's paths (`config.json`, `.env`, `cache/`). Any other root holds its
+  own `config.json` and `.env`, with its mirrors under `cache/<id>`; `config`, `cache` and `env` put
+  them elsewhere. No two employers may share any of these. Without a root, an employer is in your
+  own words only (dates and roles in the career profile).
+- `frozen` marks a past job's dataset: collection refuses it, so a snapshot you kept is never
+  changed (or emptied, once access to that org has gone).
+
+`bin/footprint employers` lists them, with what is on disk: `full` (raw data), `facts` (the facts
+alone) or `context` (neither). `-employer <id>` runs any command on one: it sets `-config`, `-data`,
+`-cache`, `-env`, `-facts`, `-notes` and `-context`, and any of them given on the command line wins.
+
+```sh
+bin/footprint -employer acme facts       # the facts of a past job, from its raw data
+bin/footprint -employer globex all       # collect the current one, as without careers.json
+```
+
 ## Development
 
 ```sh
@@ -277,6 +311,7 @@ internal/facts/         aggregation: the counting rules, work items, packs, note
 internal/doctor/        completeness checks over a collected dataset
 internal/filekind/      written vs generated or vendored files
 internal/tech/          technologies named from file paths
+internal/careers/       careers.json: the employers' datasets, their paths and kinds
 docs/data-schema.md     the output contract (compiled in; written to data/raw/README.md)
 docs/facts-schema.md    the facts contract (compiled in; written to data/facts/README.md)
 .claude/skills/footprint/  the skill an agent follows to use the data

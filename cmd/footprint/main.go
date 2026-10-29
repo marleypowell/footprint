@@ -80,6 +80,12 @@ or tokens):
               -from..-to, -repo, -item and -kind; one per line on stdout: kind, id, item,
               first..last, title, link (tab-separated)
 
+Several employers (careers.json, README.md: Several employers):
+  employers   the datasets careers.json lists, by when you started there: id, employer, months,
+              what is on disk (full, facts, context), frozen, directory (tab-separated)
+  -employer <id> runs any command on that employer's dataset: it sets -config, -data, -cache, -env,
+              -facts, -notes and -context, unless given; collecting into a frozen one is refused
+
 The code host, catalog, issue tracker and wiki are set in the config (code_host, catalog,
 issue_tracker, wiki; the last two are optional); supported: github, backstage, jira, confluence.
 Jira and Confluence authenticate with ATLASSIAN_EMAIL and ATLASSIAN_API_TOKEN, read from the
@@ -115,6 +121,9 @@ func main() {
 	flags.StringVar(&fo.tech, "tech", "", "count: a technology's totals (by name or alias: TS, Golang) instead of the user's")
 	flags.StringVar(&fo.by, "by", "", "count: also break the totals down by year, quarter, repo or item")
 	flags.StringVar(&fo.kind, "kind", "", "search: only these kinds of record, comma-separated: item, issue, change, doc, review, area")
+	var careersPath, employer string
+	flags.StringVar(&careersPath, "careers", "careers.json", "the employers' datasets (README.md: Several employers)")
+	flags.StringVar(&employer, "employer", "", "run on this employer's dataset, from the careers file: it sets the path flags not given")
 	var doctorJSON bool
 	flags.BoolVar(&doctorJSON, "json", false, "doctor: write the report as JSON")
 	flags.Usage = func() {
@@ -136,6 +145,14 @@ func main() {
 	if len(stages) == 0 {
 		flags.Usage()
 		os.Exit(2)
+	}
+
+	set := map[string]bool{}
+	flags.Visit(func(f *flag.Flag) { set[f.Name] = true })
+	emp, err := applyEmployer(careersPath, employer, set, &opts, &fo, &envPath)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "footprint:", err)
+		os.Exit(1)
 	}
 
 	loaded, err := envfile.Load(envPath)
@@ -163,12 +180,20 @@ func main() {
 		err = runCount(opts.DataDir, fo, stages[1:])
 	case "search":
 		err = runSearch(opts.DataDir, fo, stages[1:])
+	case "employers":
+		err = errors.New("run employers on its own")
+		if len(stages) == 1 {
+			err = runEmployers(os.Stdout, careersPath)
+		}
 	case "doctor":
 		err = errors.New("run doctor on its own")
 		if len(stages) == 1 {
 			err = runDoctor(opts, envPath, doctorJSON)
 		}
 	default:
+		if err = refuseFrozen(careersPath, emp, opts.DataDir); err != nil {
+			break
+		}
 		err = run(ctx, opts, stages)
 		if err == nil && slices.Contains(stages, "all") {
 			logx.Printf("=== doctor")
