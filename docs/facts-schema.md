@@ -389,11 +389,13 @@ ignoring case (a quoted phrase is one term). A record's text is its ids and titl
 | `change` | a PR's description, or a commit's message |
 | `doc` | a page's labels and text, or an ADR's text |
 | `review` | the user's words on the PR |
+| `area` | an ownership.jsonl area's repo, path, catalog entity (ref and title), `role`, and the names of its `others` |
 
 `-kind` keeps some kinds (comma-separated). A window keeps the records with the user's activity in
 it (an item's, as its window totals count it); `-repo` the records in the repo (an item's `repos`,
-an issue's changes', an ADR's; not wiki pages); `-item` the item's records (an initiative's
-features' too). With no terms, every record the flags keep is listed. One line per record,
+an issue's changes', an ADR's, an area's; not wiki pages); `-item` the item's records (an
+initiative's features' too). An area is as of the repos' heads, with no activity and no item, so a
+window or `-item` leaves areas out. With no terms, every record the flags keep is listed. One line per record,
 tab-separated:
 
 ```
@@ -401,7 +403,9 @@ kind  id  item  first..last  title  url
 ```
 
 `id` is as a citation names it. `item` is the work item whose note and pack tell the record's
-story (an item's own id, an epic's initiative; empty for an issue, doc or review in none).
+story (an item's own id, an epic's initiative; empty for an issue, doc or review in none, and for an
+area). An area's `title` is where it is and the user's role there: `pay/client/, top`, or `The API
+in pay/api/, major` for a catalog entity's.
 `first..last` is the user's activity on it in the window, empty for none. Lines are by `first`
 (records with no activity last), then kind in the order of the table, then id.
 

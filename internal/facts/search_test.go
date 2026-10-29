@@ -69,7 +69,7 @@ func TestSearch(t *testing.T) {
 // A hit names the item whose note and pack tell its story, and the user's activity on it in the
 // window.
 func TestSearchHits(t *testing.T) {
-	f := build(t, fixture(), Inputs{})
+	f := build(t, blamed(fixture()), Inputs{})
 	tests := []struct {
 		name string
 		q    Query
@@ -86,6 +86,9 @@ func TestSearchHits(t *testing.T) {
 		{"an epic is its own initiative's",
 			Query{Terms: []string{"search"}, Kinds: []string{"issue"}, Filter: Filter{Item: "ENG-10"}},
 			Hit{Kind: "issue", ID: "ENG-10", Item: "ENG-10", Title: "Search", URL: "https://tracker.example/browse/ENG-10"}},
+		{"an area, with no item or activity",
+			Query{Terms: []string{"the api"}, Kinds: []string{"area"}},
+			Hit{Kind: "area", ID: "own+app+src/", Title: "The API in app/src/, top", URL: "https://code.example/org/app"}},
 		{"a review naming none of the user's items has none",
 			Query{Terms: []string{"theirs 22"}},
 			Hit{Kind: "review", ID: "review+app#22", First: "2024-02-10", Last: "2024-02-10", Title: "theirs 22",
@@ -102,6 +105,60 @@ func TestSearchHits(t *testing.T) {
 			}
 			check(t, "hit", hits[len(hits)-1], tt.want)
 		})
+	}
+}
+
+// An area is found by its repo, path, catalog entity, the user's role and the colleagues in it. It
+// is as of the repos' heads, with no activity and no item: a window or an item leaves it out.
+func TestSearchAreas(t *testing.T) {
+	f := build(t, blamed(fixture()), Inputs{})
+	area := []string{"area"}
+	tests := []struct {
+		name string
+		q    Query
+		want []string
+	}{
+		{"by its path", Query{Terms: []string{"lib/"}, Kinds: area}, []string{"area own+app+lib/"}},
+		{"by its catalog entity", Query{Terms: []string{"the api"}, Kinds: area}, []string{"area own+app+src/"}},
+		{"by the user's role", Query{Terms: []string{"top"}, Kinds: area}, []string{"area own+app+src/"}},
+		{"by a colleague in it", Query{Terms: []string{"sam"}, Kinds: area}, []string{"area own+app", "area own+app+src/"}},
+		{"after every record with activity", Query{Terms: []string{"app"}, Kinds: []string{"review", "area"}},
+			[]string{"review review+app#21", "review review+app#22", "review review+app#23", "review review+app#24",
+				"area own+app", "area own+app+docs/", "area own+app+lib/", "area own+app+src/"}},
+		{"a repo keeps its areas", Query{Kinds: area, Filter: Filter{Repo: "app"}},
+			[]string{"area own+app", "area own+app+docs/", "area own+app+lib/", "area own+app+src/"}},
+		{"a window leaves them out", Query{Kinds: area, Filter: Filter{Window: mustWindow(t, "2024-01-01..2024-12-31")}}, nil},
+		{"an item leaves them out", Query{Kinds: area, Filter: Filter{Item: "ENG-1"}}, nil},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			hits, err := f.Search(tt.q)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var got []string
+			for _, h := range hits {
+				got = append(got, h.Kind+" "+h.ID)
+			}
+			check(t, "hits", got, tt.want)
+		})
+	}
+}
+
+// An area's title says where it is and the user's role in it.
+func TestAreaTitle(t *testing.T) {
+	tests := []struct {
+		name string
+		area Area
+		want string
+	}{
+		{"a repo", Area{Kind: "repo", Repo: "pay", Role: RoleMajor}, "pay, major"},
+		{"a directory", Area{Kind: "dir", Repo: "pay", Path: "client/", Role: RoleTop}, "pay/client/, top"},
+		{"a catalog entity", Area{Kind: "entity", Repo: "pay", Path: "api/", Role: RoleContributor, Entity: &Ref{ID: "component:default/api", Title: "The API"}},
+			"The API in pay/api/, contributor"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) { check(t, "areaTitle", areaTitle(&tt.area), tt.want) })
 	}
 }
 

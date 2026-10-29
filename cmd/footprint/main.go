@@ -74,10 +74,11 @@ or tokens):
               (an initiative's include its features'), or with -tech those technologies.jsonl
               reports for a technology, broken down -by year, quarter, repo or item; JSON on
               stdout
-  search      the items, issues, changes, docs and reviews whose ids, title and text (an
-              item's note, a change's description, a doc's body) have every term, ignoring
-              case, narrowed by -from..-to, -repo, -item and -kind; one per line on stdout:
-              kind, id, item, first..last, title, link (tab-separated)
+  search      the items, issues, changes, docs, reviews and ownership areas whose ids, title
+              and text (an item's note, a change's description, a doc's body, an area's path,
+              entity, role and colleagues) have every term, ignoring case, narrowed by
+              -from..-to, -repo, -item and -kind; one per line on stdout: kind, id, item,
+              first..last, title, link (tab-separated)
 
 The code host, catalog, issue tracker and wiki are set in the config (code_host, catalog,
 issue_tracker, wiki; the last two are optional); supported: github, backstage, jira, confluence.
@@ -113,7 +114,7 @@ func main() {
 	flags.StringVar(&fo.item, "item", "", "count, search: only what counts toward this work item (an initiative's include its features')")
 	flags.StringVar(&fo.tech, "tech", "", "count: a technology's totals (by name or alias: TS, Golang) instead of the user's")
 	flags.StringVar(&fo.by, "by", "", "count: also break the totals down by year, quarter, repo or item")
-	flags.StringVar(&fo.kind, "kind", "", "search: only these kinds of record, comma-separated: item, issue, change, doc, review")
+	flags.StringVar(&fo.kind, "kind", "", "search: only these kinds of record, comma-separated: item, issue, change, doc, review, area")
 	var doctorJSON bool
 	flags.BoolVar(&doctorJSON, "json", false, "doctor: write the report as JSON")
 	flags.Usage = func() {

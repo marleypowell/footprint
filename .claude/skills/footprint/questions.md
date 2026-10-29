@@ -3,12 +3,13 @@
 1. Run `bin/footprint facts`, so the packs are current.
 2. Find the records with `bin/footprint search <term>...` (every term must match; quote a phrase),
    narrowed by `-from YYYY-MM-DD -to YYYY-MM-DD` when the question has a period, `-repo`, `-item`
-   and `-kind item,issue,change,doc,review`. Each line is `kind, id, item, first..last, title, url`.
+   and `-kind item,issue,change,doc,review,area`. Each line is `kind, id, item, first..last, title, url`.
    Try a synonym or a narrower term when a search finds nothing or too much. Read the notes
    (`data/notes/<item>.md`) of the items it names, and the packs (`data/facts/packs/<id>.md`) of
-   items without one. Who owns what (the repos, catalog entities and directories where the user's
-   lines still stand) is in `data/facts/ownership.jsonl`: grep it for the area by name. For detail
-   beyond them, follow the paths in `data/raw/index.json`.
+   items without one. Who owns what is in the `area` lines: the repos, catalog entities and
+   directories where the user's lines still stand, found by path, entity, role (`top`, `major`) or a
+   colleague's name, and left out by a window or `-item` (they are as of today). For detail beyond
+   them, follow the paths in `data/raw/index.json`, and an area's record in `ownership.jsonl`.
 3. Take every number from `bin/footprint count`, with the same `-from`/`-to`, `-repo` and `-item`
    flags, `-tech <name>` for a language, tool or platform, and `-by year|quarter|repo|item` for a
    breakdown, and show the command in the answer so it can be run again; an area's lines and share

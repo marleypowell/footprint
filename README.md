@@ -222,8 +222,8 @@ bin/footprint search -kind item,doc "rate limit"      # the records that mention
 - The agent writes one note per work item, from its pack, in `data/notes/`; a note is reused until
   its pack changes. It drafts documents in `data/drafts/` from the notes and the facts.
 - `count` writes the totals facts.json reports for any window, repo or item (or, with `-tech`, a
-  technology's), broken down by year, quarter, repo or item, and `search` lists the items, issues, changes, docs and reviews whose text
-  mentions every term. Neither writes files: an answer's lookups and numbers come from code, not
+  technology's), broken down by year, quarter, repo or item, and `search` lists the items, issues,
+  changes, docs, reviews and ownership areas whose text mentions every term. Neither writes files: an answer's lookups and numbers come from code, not
   from ad hoc queries over the files.
 - `check` fails a note or draft whose citations (`[[PAY-62]]`, `[[repo#123]]`) name nothing, and
   lists the numbers that match no fact. `-plain` or `-links` writes the version to share.

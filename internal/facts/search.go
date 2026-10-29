@@ -10,7 +10,7 @@ import (
 )
 
 // The kinds of record a search finds, in the order a day's hits list them.
-var searchKinds = []string{"item", "issue", "change", "doc", "review"}
+var searchKinds = []string{"item", "issue", "change", "doc", "review", "area"}
 
 // Query is what footprint search looks for: records whose text has every term, within a filter.
 type Query struct {
@@ -51,7 +51,9 @@ type searchable struct {
 // Search finds the records matching q, by when the user's activity on them began (records with
 // none last), then kind, then id. A record's text is its ids and title and: an item's note and the
 // user's context for it; an issue's description; a change's description (a PR's, or a commit's
-// message); a doc's labels and text; and the user's words on a reviewed PR.
+// message); a doc's labels and text; the user's words on a reviewed PR; and an area's repo, path,
+// catalog entity, role and the colleagues in it. Areas are as of the repos' heads, with no activity
+// and no item, so a window or an item leaves them out.
 func (f *Facts) Search(q Query) ([]Hit, error) {
 	for _, k := range q.Kinds {
 		if !slices.Contains(searchKinds, k) {
@@ -204,5 +206,29 @@ func (f *Facts) searchables() []searchable {
 		out = append(out, searchable{hit: Hit{Kind: "review", ID: r.Ref, Item: r.Item, Title: r.Title, URL: r.URL},
 			text: text, repos: []string{r.Repo}, evs: r.evs})
 	}
+	for _, a := range f.Areas {
+		text := []string{a.ID, a.Repo, a.Path, a.Role}
+		if a.Entity != nil {
+			text = append(text, a.Entity.ID, a.Entity.Title)
+		}
+		for _, p := range a.Others {
+			text = append(text, p.Name)
+		}
+		out = append(out, searchable{hit: Hit{Kind: "area", ID: a.ID, Title: areaTitle(a), URL: a.URL},
+			text: text, repos: []string{a.Repo}})
+	}
 	return out
+}
+
+// areaTitle names an area and the user's role in it: "pay, major", "pay/client/, top", "The API in
+// pay/api/, contributor".
+func areaTitle(a *Area) string {
+	where := a.Repo
+	if a.Path != "" {
+		where += "/" + a.Path
+	}
+	if a.Entity != nil {
+		where = a.Entity.Title + " in " + where
+	}
+	return where + ", " + a.Role
 }
