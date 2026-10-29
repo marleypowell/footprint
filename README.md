@@ -85,6 +85,7 @@ it is not (see [Completeness](#completeness)). Then open `data/raw/index.json`.
 | `reviews` | other people's PRs you reviewed or commented on, with your reviews and comments | GitHub: GraphQL search, ~7 min for 1,700 PRs |
 | `commits` | your commits on any ref | local git, ~30 s |
 | `catalog` | every catalog entity on every default branch | local git only |
+| `ownership` | who wrote the lines the default branch has now, in the files you ever changed | local git blame; a cache makes later runs blame only what changed |
 | `projects` | per-repo `project.json`, docs, decision records (ADRs) you committed to, `data/raw/index.json`, and the issue tracker's projects | local, plus one project listing; indexes `issues/` and `wiki/` too |
 | `verify` | compares with the code host's own commit attribution | GitHub: ~3 min (search rate limits) |
 | `issues` | issues ever assigned to you, or named in your commits and PRs, with comments, history and worklogs, plus the stories, epics and initiatives above them | Jira: one request per issue, a few minutes for thousands; skipped without an `issue_tracker` section |
@@ -95,7 +96,7 @@ With an `issue_tracker` section, `prs`, `commits`, `projects` and `pages` list t
 `all` stops at `prs`. `issues` and `pages` run last and refresh their own parts of `index.json`.
 
 Every stage is idempotent and overwrites its own output. To refresh later, run
-`mirror prs reviews commits projects verify issues pages`. Flags can go anywhere on the command line:
+`mirror prs reviews commits ownership projects verify issues pages`. Flags can go anywhere on the command line:
 
 | flag | default | |
 |---|---|---|
@@ -135,6 +136,10 @@ Every stage is idempotent and overwrites its own output. To refresh later, run
     were moved out of.
   - `confluence`: `site`.
 - `mirror`: `parallelism` and `fetch_pull_refs`.
+- `ownership` (optional): `parallelism` (files blamed at once; default the CPUs, up to 8), `copies`
+  (blame `-C`: follow lines copied between files; default true), `ignore_revs` (commits to pass
+  over in every repo, such as formatting passes; a repo's own `.git-blame-ignore-revs` is used too),
+  and `others` (keep other authors' names and emails; default true).
 
 `init` copies the example's `mirror` settings and the `kind` of each tool. The example's other tool
 settings only show the shape: add your org's (at least the Jira and Confluence `site`), or delete
@@ -172,6 +177,7 @@ JSON. It exits 1 when a check fails, and calls no tools, so it also works on a c
 | `verify` | commits the code host credits to you are missing; names the emails to add |
 | `identities` | an identity resembling you is neither configured nor in `identity.not_me` (a warning: only you can say whose it is) |
 | `reviews` | the `reviews` stage never ran (a warning: reviews are then unknown, not none) |
+| `ownership` | the `ownership` stage never ran in any repo you committed to |
 | `issues` | keys failed to load (fail) or are hidden from the token (warning) |
 | `pages` | a wiki is configured but `pages` never ran |
 | `mirror` | a repo failed to mirror, or was never mirrored |

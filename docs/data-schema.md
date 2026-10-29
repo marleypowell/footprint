@@ -37,6 +37,7 @@ repos/<repo>/
   commits.jsonl               the user's commits (one JSON object per line, oldest first)
   prs.jsonl                   pull requests authored by the user (one per line, by number)
   reviews.jsonl               other people's pull requests the user reviewed or commented on (one per line, by number)
+  ownership.json              who wrote the lines of the files the user ever changed, as the default branch has them now
   decisions.jsonl             decision records (ADRs) on the default branch the user committed to (one per line, by path)
 issues/
   <project>.jsonl             issues ever assigned to the user or named in their git work, and the issues
@@ -139,6 +140,28 @@ reviewed there without committing.
 conversation, `repos`). Without it the stage never ran, and reviews are unknown rather than none.
 The code host finds reviews only on its own PRs: reviews on a host the repos were migrated from are
 not there.
+
+## ownership.json
+
+Who wrote the lines the default branch has now, in the files the user ever changed (under any name
+they had, followed through renames), by `git blame -w -M -C` at `head`. Every number is as of
+`head_at`. Blame credits a line to whoever changed it last: a colleague's rename takes the line, a
+formatting pass takes every line it touches (unless the repo lists it in `.git-blame-ignore-revs`),
+code copied into a repo belongs to who copied it, and refactoring your own code replaces your lines
+with new ones. These are lines as they stand, not a measure of value.
+
+| field | meaning |
+|---|---|
+| `repo`, `default_branch`, `head`, `head_at`, `generated_at` | the commit blamed, and when the stage ran |
+| `flags` | git blame's flags (`-C` follows lines copied from other files; `ownership.copies: false` drops it) |
+| `ignored_revs` | commits blame passed over: `sha`, and `source` (`repo_file` or `config`'s `ownership.ignore_revs`) |
+| `lines` | text lines at `head`, without the files in `skipped` |
+| `dirs` | `path`, `files`, `lines` of those text files by directory, to two levels; `(root)` for files at the top. The denominator for a share of a directory |
+| `files` | the files the user changed that exist at `head`: `path`, `lines`, `commits` (`sha`, `lines`: those commits of the user's that blame names, which includes the commits landing their PRs), `other_lines` (everyone else's), `others` (`name`, `email`, `lines`, `last_at` per identity, with the mailmap applied; empty with `ownership.others: false`, and `other_lines` still counts them). `lines` is the commits' plus `other_lines` |
+| `skipped` | files left out of `lines` and `files`, with their lines: `generated` (by the same rules as line counts), `binary`, `large` (over 5,000 lines or 1 MiB; the latter's lines are not counted) and `failed` (blame did not run) |
+
+The stage keeps `cache/ownership/<repo>.json`, which a later run reuses for files whose content, flags
+and ignored revisions are unchanged: a weekly run blames only what changed.
 
 ## project.json (what each project is)
 

@@ -4,7 +4,7 @@ What a week's work led to is cheapest to record the week it happened, and the to
 none of it. This asks the user a few short questions and saves their words. It writes no notes and
 no documents.
 
-1. **Refresh.** Run in the background `bin/footprint mirror prs reviews commits projects verify issues pages`
+1. **Refresh.** Run in the background `bin/footprint mirror prs reviews commits ownership projects verify issues pages`
    (`.exe` on Windows), then `bin/footprint doctor`. On a FAIL, tell the user what it found before
    asking anything; if the refresh itself fails, go on with the data there is.
 2. **Since when.** The newest `data/context/log/*.md` has `window: <from>..<to>` in its frontmatter:

@@ -14,11 +14,12 @@ type Config struct {
 	Identity IdentityConfig `json:"identity"`
 	// Each tool section names its adapter ("kind") and holds that adapter's settings. The issue
 	// tracker and wiki are optional.
-	CodeHost     Tool         `json:"code_host"`
-	Catalog      Tool         `json:"catalog"`
-	IssueTracker *Tool        `json:"issue_tracker,omitempty"`
-	Wiki         *Tool        `json:"wiki,omitempty"`
-	Mirror       MirrorConfig `json:"mirror"`
+	CodeHost     Tool            `json:"code_host"`
+	Catalog      Tool            `json:"catalog"`
+	IssueTracker *Tool           `json:"issue_tracker,omitempty"`
+	Wiki         *Tool           `json:"wiki,omitempty"`
+	Mirror       MirrorConfig    `json:"mirror"`
+	Ownership    OwnershipConfig `json:"ownership"`
 }
 
 // Tool is a config section selecting an adapter. Settings is the whole section, kind included,

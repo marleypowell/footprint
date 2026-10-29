@@ -292,6 +292,9 @@ func (h *harness) projects(ctx context.Context) error {
 		if hasReviews {
 			item.Files["reviews"] = "repos/" + name + "/reviews.jsonl"
 		}
+		if fileExists(filepath.Join(dir, "ownership.json")) {
+			item.Files["ownership"] = "repos/" + name + "/ownership.json"
+		}
 		if len(decisions) > 0 {
 			item.Files["decisions"] = "repos/" + name + "/decisions.jsonl"
 		}

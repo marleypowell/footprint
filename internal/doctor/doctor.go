@@ -118,7 +118,7 @@ func Run(in Inputs) (Report, error) {
 		d.tracker, d.wiki = c.IssueTracker != nil, c.Wiki != nil
 	}
 	var r Report
-	for _, check := range []func() (Check, error){d.verify, d.identities, d.reviews, d.issues, d.pages, d.mirror, d.stale, d.env} {
+	for _, check := range []func() (Check, error){d.verify, d.identities, d.reviews, d.ownership, d.issues, d.pages, d.mirror, d.stale, d.env} {
 		c, err := check()
 		if err != nil {
 			return Report{}, err
@@ -374,6 +374,30 @@ func (d *dataset) reviews() (Check, error) {
 	return c, nil
 }
 
+// ownership: the ownership stage ran in the repos the user committed to. A repo without a default
+// branch in its mirror has no file, so one missing is no fault; none at all means it never ran.
+func (d *dataset) ownership() (Check, error) {
+	c := Check{ID: "ownership"}
+	with, blamed := 0, 0
+	for _, r := range d.index.Repos {
+		if r.Files["commits"] != "" {
+			with++
+			if r.Files["ownership"] != "" {
+				blamed++
+			}
+		}
+	}
+	switch {
+	case with == 0:
+		c.Status, c.Summary = Skip, "no repo has commits of the user's"
+	case blamed == 0:
+		c.Status, c.Summary, c.Fix = Warn, "who wrote the lines the default branches have now was never collected", "footprint ownership projects"
+	default:
+		c.Status, c.Summary = Pass, fmt.Sprintf("blame of the user's files in %d of the %d repos they committed to", blamed, with)
+	}
+	return c, nil
+}
+
 // pages: with a wiki configured, the pages stage ran.
 func (d *dataset) pages() (Check, error) {
 	c := Check{ID: "pages"}
@@ -499,7 +523,7 @@ func (d *dataset) stale() (Check, error) {
 	}
 	if t, err := time.Parse(time.RFC3339, last); err == nil && d.in.Now.Sub(t) > d.in.MaxAge {
 		found(fmt.Sprintf("the data was last collected %d days ago", int(d.in.Now.Sub(t).Hours()/24)),
-			"mirror", "prs", "reviews", "commits", "projects", "verify", "issues", "pages")
+			"mirror", "prs", "reviews", "commits", "ownership", "projects", "verify", "issues", "pages")
 	}
 	if len(c.Details) == 0 {
 		c.Status, c.Summary = Pass, "every stage ran after the stages it reads"

@@ -39,7 +39,8 @@ func newFixture(t *testing.T) *fixture {
 	}}
 	f.index = collect.Index{GeneratedAt: stamp(collected), Org: "acme", Login: "jdoe", Identity: me,
 		Sources:     collect.Sources{CodeHost: "gitlab", Catalog: "cortex", IssueTracker: &jira, Wiki: &notion},
-		WikiBySpace: []collect.IndexGroup{{Name: "ENG"}}}
+		WikiBySpace: []collect.IndexGroup{{Name: "ENG"}},
+		Repos:       []collect.IndexRepo{{Name: "pay", Files: map[string]string{"commits": "repos/pay/commits.jsonl", "ownership": "repos/pay/ownership.json"}}}}
 	f.write("index.json", f.index, collected)
 	f.write("repos/pay/commits.jsonl", collect.Commit{Repo: "pay", SHA: "c1"}, collected.Add(-time.Hour))
 	f.write("repos/pay/prs.jsonl", map[string]any{"number": 1}, collected.Add(-time.Hour))
@@ -222,6 +223,31 @@ func TestReviews(t *testing.T) {
 	expect(t, f.run()["reviews"], Warn, "never collected", "footprint reviews projects")
 }
 
+// ownership: with the user's commits in the dataset, some repo has blame; a repo without is no fault.
+func TestOwnership(t *testing.T) {
+	repo := func(files map[string]string) []collect.IndexRepo {
+		return []collect.IndexRepo{{Name: "pay", Files: files}}
+	}
+	tests := []struct {
+		name     string
+		repos    []collect.IndexRepo
+		want     Status
+		contains string
+	}{
+		{"no commits at all", nil, Skip, "no repo has commits"},
+		{"commits and no blame", repo(map[string]string{"commits": "repos/pay/commits.jsonl"}), Warn, "footprint ownership projects"},
+		{"commits and blame", repo(map[string]string{"commits": "c", "ownership": "o"}), Pass, "1 of the 1 repos"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			f := newFixture(t)
+			f.index.Repos = tt.repos
+			f.write("index.json", f.index, collected)
+			expect(t, f.run()["ownership"], tt.want, tt.contains)
+		})
+	}
+}
+
 func TestPages(t *testing.T) {
 	f := newFixture(t)
 	os.RemoveAll(filepath.Join(f.in.DataDir, "wiki"))
@@ -263,7 +289,7 @@ func TestStale(t *testing.T) {
 	f = newFixture(t)
 	f.in.Now = collected.Add(45 * 24 * time.Hour)
 	f.in.Config.IssueTracker, f.in.Config.Wiki = nil, nil
-	expect(t, f.run()["stale"], Warn, "last collected 45 days ago (re-run mirror prs reviews commits projects verify)", "\nfootprint mirror prs reviews commits projects verify\n")
+	expect(t, f.run()["stale"], Warn, "last collected 45 days ago (re-run mirror prs reviews commits ownership projects verify)", "\nfootprint mirror prs reviews commits ownership projects verify\n")
 
 	f = newFixture(t)
 	f.in.Config = nil // a copied dataset: the identity it recorded, and no mirror state

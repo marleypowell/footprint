@@ -28,5 +28,11 @@
   "mirror": {
     "parallelism": 6,
     "fetch_pull_refs": true
+  },
+  "ownership": {
+    "parallelism": 4,
+    "copies": true,
+    "ignore_revs": [],
+    "others": true
   }
 }

@@ -379,7 +379,7 @@ func TestPipeline(t *testing.T) {
 		t.Error("schema doc not written")
 	}
 	b, _ := json.Marshal(index.Repos[0].Files)
-	check("index files", string(b), `{"commits":"repos/repo/commits.jsonl","decisions":"repos/repo/decisions.jsonl","prs":"repos/repo/prs.jsonl","reviews":"repos/repo/reviews.jsonl"}`)
+	check("index files", string(b), `{"commits":"repos/repo/commits.jsonl","decisions":"repos/repo/decisions.jsonl","ownership":"repos/repo/ownership.json","prs":"repos/repo/prs.jsonl","reviews":"repos/repo/reviews.jsonl"}`)
 
 	// issues/: assigned at some point (by the tracker's search, or its history), or named in git work
 	records, err := readJSONL[IssueRecord](filepath.Join(raw, "issues", "ENG.jsonl"))
