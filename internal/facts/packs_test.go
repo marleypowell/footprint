@@ -51,6 +51,28 @@ func TestClip(t *testing.T) {
 }
 
 // Where a change's files were, to two directory levels.
+// clipTail keeps the end of a text, where the user's newest words are, and says how much it cut. It
+// starts on a character, never inside one.
+func TestClipTail(t *testing.T) {
+	tests := []struct {
+		name, text string
+		n          int
+		want       string
+	}{
+		{"short enough is whole", "abc", 10, "abc"},
+		{"exactly the limit is whole", "abcde", 5, "abcde"},
+		{"longer keeps the end", "one two three four", 10, "[8 earlier characters cut] …three four"},
+		{"never starts inside a character", "ééééé", 5, "[6 earlier characters cut] …éé"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := clipTail(tt.text, tt.n); got != tt.want {
+				t.Errorf("clipTail(%q, %d) = %q, want %q", tt.text, tt.n, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestTopDir(t *testing.T) {
 	for p, want := range map[string]string{
 		"main.go": "(root)", "src/a.go": "src/", "src/x/a.go": "src/x/", "src/x/y/z.go": "src/x/", ".github/workflows/ci.yml": ".github/workflows/",

@@ -163,6 +163,18 @@ func clip(text string, n int) string {
 	return strings.TrimSpace(string(r[:n])) + fmt.Sprintf(" … [+%d characters]", len(r)-n)
 }
 
+// clipTail keeps the end of text, where the user's newest words are: weekly answers are appended.
+func clipTail(text string, n int) string {
+	if len(text) <= n {
+		return text
+	}
+	cut := len(text) - n
+	for cut < len(text) && !utf8.RuneStart(text[cut]) {
+		cut++
+	}
+	return fmt.Sprintf("[%d earlier characters cut] …", cut) + text[cut:]
+}
+
 func oneLine(s string) string { return strings.Join(strings.Fields(s), " ") }
 
 // buildPacks makes every item's pack input and its hash, then decides the notes' states.
@@ -187,7 +199,7 @@ func (f *Facts) packInput(it *Item) *packInput {
 		Involvement: it.Involvement, Effort: it.Effort, Span: it.First + ".." + it.Last, Initiative: it.Initiative,
 		Repos: it.Repos, Members: []packIssue{}, Features: []packIssue{}, Comments: []packText{}, Changes: []packChange{},
 		Bodies: []packText{}, Subjects: []string{}, Docs: []Ref{}, Paths: []packPath{},
-		FromUser: clip(f.context[itemPath(it.ID)], maxFromUser),
+		FromUser: clipTail(f.context[itemPath(it.ID)], maxFromUser),
 	}
 	if it.own != nil {
 		in.Description = clip(it.own.rec.Description, maxDescription)

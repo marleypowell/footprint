@@ -15,6 +15,7 @@ import (
 type factsOptions struct {
 	dir, notes, context string // the facts directory, the notes directory, the user's context
 	from, to            string // facts: a window to write too
+	since               string // facts: also write recent/, the items to ask about since this day
 	plain, links        bool   // check: write <file>.final.md
 }
 
@@ -43,6 +44,13 @@ func runFacts(dataDir string, o factsOptions) error {
 	if err != nil {
 		return err
 	}
+	if o.since != "" {
+		w, err := f.Since(o.since)
+		if err != nil {
+			return err
+		}
+		f.Recent = &w
+	}
 	if err := f.Write(o.dir, windows...); err != nil {
 		return err
 	}
@@ -56,6 +64,9 @@ func runFacts(dataDir string, o factsOptions) error {
 	report(all, filepath.Join(o.dir, "todo.txt"))
 	for _, w := range windows {
 		report(f.Summary(w), filepath.Join(o.dir, "windows", w.Dir(), "todo.txt"))
+	}
+	if f.Recent != nil {
+		logx.Printf("facts: %d items to ask about since %s -> %s", len(f.CaptureItems(*f.Recent)), o.since, filepath.Join(o.dir, "recent", "capture.txt"))
 	}
 	if all.Notes.Orphans > 0 {
 		logx.Printf("facts: %d notes name no work item (listed in todo.txt)", all.Notes.Orphans)

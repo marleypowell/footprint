@@ -93,6 +93,7 @@ func main() {
 	flags.StringVar(&fo.context, "context", "data/context", "facts, check: the user's own words (profile, framework, items/<id>.md)")
 	flags.StringVar(&fo.from, "from", "", "facts: also write the window from this day (YYYY-MM-DD)")
 	flags.StringVar(&fo.to, "to", "", "facts: ... to this day, included")
+	flags.StringVar(&fo.since, "since", "", "facts: also write recent/: the work items to ask the user about since this day (YYYY-MM-DD)")
 	flags.BoolVar(&fo.plain, "plain", false, "check: also write <file>.final.md without the citations")
 	flags.BoolVar(&fo.links, "links", false, "check: also write <file>.final.md with the citations as links")
 	var doctorJSON bool

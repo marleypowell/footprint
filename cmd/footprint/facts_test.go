@@ -146,6 +146,45 @@ func TestRunFactsWritesTheFactsAndTheWindow(t *testing.T) {
 	}
 }
 
+// -since writes recent/, listing what to ask the user about from that day; a day that is not one is
+// refused; without it there is no recent/.
+func TestRunFactsSince(t *testing.T) {
+	dataset := newDataset(t)
+
+	o := factsOpts(t)
+	o.since = "2024-03-01"
+	if err := runFacts(dataset, o); err != nil {
+		t.Fatalf("runFacts(-since 2024-03-01) = %v", err)
+	}
+	list, err := os.ReadFile(filepath.Join(o.dir, "recent", "capture.txt"))
+	if err != nil || !strings.Contains(string(list), "repo+pay+2024q1") {
+		t.Errorf("recent/capture.txt = %q (err %v), want the bucket of the user's March commit", list, err)
+	}
+
+	o = factsOpts(t)
+	o.since = "2030-01-01"
+	if err := runFacts(dataset, o); err != nil {
+		t.Fatalf("runFacts(-since after the last day) = %v", err)
+	}
+	if list, err := os.ReadFile(filepath.Join(o.dir, "recent", "capture.txt")); err != nil || len(list) != 0 {
+		t.Errorf("recent/capture.txt = %q (err %v), want an empty file: nothing to ask about", list, err)
+	}
+
+	o = factsOpts(t)
+	o.since = "last week"
+	if err := runFacts(dataset, o); err == nil || !strings.Contains(err.Error(), `"last week"`) {
+		t.Errorf("runFacts(-since \"last week\") = %v, want an error naming it", err)
+	}
+
+	o = factsOpts(t)
+	if err := runFacts(dataset, o); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(o.dir, "recent")); err == nil {
+		t.Error("recent/ written without -since")
+	}
+}
+
 func TestRunCheckRefusesBadArguments(t *testing.T) {
 	tests := []struct {
 		name         string

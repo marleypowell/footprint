@@ -27,6 +27,7 @@ Work from the repo root. Build first when `bin/footprint` is missing or older th
 | a promotion case | since their last promotion (ask) | `templates/promotion.md` |
 | a pay rise case | since their last pay change (ask) | `templates/pay-rise.md` |
 | a CV or LinkedIn profile | all | `templates/cv.md` |
+| a weekly capture of what the week's work led to | since the last capture | `capture.md` instead of steps 2-6 |
 | an offboarding snapshot | all | `templates/offboarding.md` |
 | preparation for a job interview stage | all | `templates/interview.md` |
 
@@ -37,7 +38,8 @@ Work from the repo root. Build first when `bin/footprint` is missing or older th
    window. Read the window's `overview.md`: `data/facts/windows/<from>_<to>/`, or `data/facts/` for
    all time. Done when the command exits 0 and you have told the user the coverage gaps that bear on
    their request.
-2. **Context.** Read `data/context/profile.md`, for a review, promotion or pay rise case
+2. **Context.** (A review, promotion or pay rise case also reads the logs in `data/context/log/`
+   that fall inside its window.) Read `data/context/profile.md`, for a review, promotion or pay rise case
    `data/context/framework.md`, for a pay rise case `data/context/pay.md`, and for an interview
    `data/context/interview-<company>.md`. When `profile.md` is missing, or lacks the employer, titles
    or teams the template needs, fill it by `profile-interview.md`. Ask the user for the rest of what

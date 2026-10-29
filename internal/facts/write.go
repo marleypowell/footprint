@@ -175,6 +175,12 @@ func (f *Facts) Write(dir string, windows ...Window) error {
 	for _, it := range f.Items {
 		files[filepath.Join("packs", itemPath(it.ID)+".md")] = renderPack(it.pack, it.Pack)
 	}
+	if f.Recent != nil {
+		items := f.CaptureItems(*f.Recent)
+		put("recent/facts.json")(marshal(f.Summary(*f.Recent)))
+		put("recent/items.jsonl")(jsonl(items))
+		files["recent/capture.txt"] = captureList(items)
+	}
 	for _, w := range windows {
 		d := filepath.Join("windows", w.Dir())
 		put(filepath.Join(d, "facts.json"))(marshal(f.Summary(w)))

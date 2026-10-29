@@ -21,6 +21,8 @@ type Facts struct {
 	Items   []*Item   // by first activity, then id
 	Docs    []*Doc    // by creation, then id
 	Reviews []*Review // by repo, then number
+	// Recent, when set before Write, also writes recent/: what to ask the user about for the window
+	Recent *Window
 	// Technologies are by the user's active days with them, then lines added, then name
 	Technologies []*Technology
 	Repos        []*Repo  // by name

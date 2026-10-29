@@ -200,6 +200,7 @@ what it wrote. [`docs/facts-schema.md`](docs/facts-schema.md) has the rules.
 ```sh
 bin/footprint facts                                   # what counts and how much -> data/facts/
 bin/footprint facts -from 2025-04-01 -to 2026-03-31   # ... and that window's view
+bin/footprint facts -since 2026-10-22                 # ... and the work to ask you about since then -> recent/
 bin/footprint check data/drafts/review.md             # citations and numbers in a note or draft
 ```
 
