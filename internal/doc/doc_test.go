@@ -85,3 +85,26 @@ func TestObjectRoundTrip(t *testing.T) {
 		t.Error("want an error for a non-object")
 	}
 }
+
+// An Object keeps its keys in the order they were first set, and hands out a copy of them: changing
+// the copy does not reorder the object.
+func TestObjectGetAndKeys(t *testing.T) {
+	o := NewObject()
+	o.Set("b", 1)
+	o.Set("a", "x")
+	o.Set("b", 2) // a replaced key keeps its place
+	if v, ok := o.Get("b"); !ok || v != 2 {
+		t.Errorf("Get(b) = %v, %v, want 2, true", v, ok)
+	}
+	if v, ok := o.Get("none"); ok || v != nil {
+		t.Errorf("Get(none) = %v, %v, want nil, false", v, ok)
+	}
+	keys := o.Keys()
+	if len(keys) != 2 || keys[0] != "b" || keys[1] != "a" {
+		t.Fatalf("Keys() = %v, want [b a]", keys)
+	}
+	keys[0] = "changed"
+	if got := o.Keys(); got[0] != "b" {
+		t.Errorf("Keys() shares its backing array: %v after changing a copy", got)
+	}
+}

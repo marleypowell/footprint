@@ -291,3 +291,55 @@ func TestText(t *testing.T) {
 		t.Errorf("text:\n%s\nwant:\n%s", b.String(), want)
 	}
 }
+
+// readJSON reads a file into a value: absent is not an error, but an unreadable or malformed file
+// is, and says which.
+func TestReadJSON(t *testing.T) {
+	dir := t.TempDir()
+	good, bad := filepath.Join(dir, "good.json"), filepath.Join(dir, "bad.json")
+	for path, text := range map[string]string{good: `{"n": 3}`, bad: `{"n": `} {
+		if err := os.WriteFile(path, []byte(text), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	tests := []struct {
+		name    string
+		path    string
+		wantOK  bool
+		wantErr string
+	}{
+		{"a file", good, true, ""},
+		{"no such file", filepath.Join(dir, "none.json"), false, ""},
+		{"malformed", bad, false, "decoding " + bad},
+		{"a directory", dir, false, "is a directory"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var v struct{ N int }
+			ok, err := readJSON(tt.path, &v)
+			if ok != tt.wantOK || (tt.wantErr == "") != (err == nil) || (err != nil && !strings.Contains(err.Error(), tt.wantErr)) {
+				t.Errorf("readJSON(%s) = %v, %v; want ok %v, error with %q", tt.name, ok, err, tt.wantOK, tt.wantErr)
+			}
+			if tt.wantOK && v.N != 3 {
+				t.Errorf("readJSON decoded %+v", v)
+			}
+		})
+	}
+}
+
+func TestTruncate(t *testing.T) {
+	tests := []struct {
+		s    string
+		n    int
+		want string
+	}{
+		{"short", 10, "short"},
+		{"exactly", 7, "exactly"},
+		{"too long by far", 8, "too long…"},
+	}
+	for _, tt := range tests {
+		if got := truncate(tt.s, tt.n); got != tt.want {
+			t.Errorf("truncate(%q, %d) = %q, want %q", tt.s, tt.n, got, tt.want)
+		}
+	}
+}

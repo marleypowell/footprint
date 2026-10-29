@@ -103,3 +103,63 @@ func TestIsDoc(t *testing.T) {
 		t.Error("want an error for invalid JSON")
 	}
 }
+
+// Render takes a whole document, or any single node: a block, or an inline run.
+func TestRenderNodes(t *testing.T) {
+	text := func(s string) Node { return Node{Type: "text", Text: s} }
+	tests := []struct {
+		name string
+		node Node
+		want string
+	}{
+		{"a document", Node{Type: "doc", Content: []Node{{Type: "paragraph", Content: []Node{text("one")}}, {Type: "paragraph", Content: []Node{text("two")}}}}, "one\n\ntwo"},
+		{"a block", Node{Type: "paragraph", Content: []Node{text("alone")}}, "alone"},
+		{"an inline node", text("  spaced  "), "spaced"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := Render(tt.node); got != tt.want {
+				t.Errorf("Render() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+// A panel reads as the GitHub alert nearest its type, and a plain note when it has none.
+func TestAlert(t *testing.T) {
+	for panel, want := range map[string]string{
+		"info": "NOTE", "note": "NOTE", "": "NOTE", "tip": "TIP", "success": "TIP", "warning": "WARNING", "error": "CAUTION",
+	} {
+		if got := alert(panel); got != want {
+			t.Errorf("alert(%q) = %q, want %q", panel, got, want)
+		}
+	}
+}
+
+// intAttr reads a number attribute, and falls back when it is absent or not a number.
+func TestIntAttr(t *testing.T) {
+	n := Node{Attrs: map[string]any{"level": float64(3), "text": "x"}}
+	for key, want := range map[string]int{"level": 3, "text": 9, "none": 9} {
+		if got := intAttr(n, key, 9); got != want {
+			t.Errorf("intAttr(%q) = %d, want %d", key, got, want)
+		}
+	}
+}
+
+// truncate cuts at a byte count, backing up to the start of a character, and marks the cut.
+func TestTruncate(t *testing.T) {
+	tests := []struct {
+		s    string
+		n    int
+		want string
+	}{
+		{"short", 10, "short"},
+		{"abcdef", 3, "abc…"},
+		{"éé", 3, "é…"},
+	}
+	for _, tt := range tests {
+		if got := truncate(tt.s, tt.n); got != tt.want {
+			t.Errorf("truncate(%q, %d) = %q, want %q", tt.s, tt.n, got, tt.want)
+		}
+	}
+}

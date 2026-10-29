@@ -3,8 +3,12 @@ package atlassian
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
+	"reflect"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -165,5 +169,136 @@ func TestTimestamp(t *testing.T) {
 	}
 	if err := json.Unmarshal([]byte(`{"iso":true}`), &v); err == nil {
 		t.Error("a boolean is not a timestamp")
+	}
+}
+
+// Env names the variables Connect authenticates with: the email, and one of the product's own token
+// or the shared one, so that doctor can say which are missing without reading their values.
+func TestProductEnv(t *testing.T) {
+	tests := []struct {
+		product Product
+		want    [][]string
+	}{
+		{Jira, [][]string{{"ATLASSIAN_EMAIL"}, {"JIRA_API_TOKEN", "ATLASSIAN_API_TOKEN"}}},
+		{Confluence, [][]string{{"ATLASSIAN_EMAIL"}, {"CONFLUENCE_API_TOKEN", "ATLASSIAN_API_TOKEN"}}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.product.Name, func(t *testing.T) {
+			if got := tt.product.Env(); !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("Env() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+// A site is written with or without its scheme, and with or without a trailing slash or spaces; a
+// scheme it has is kept, so that a test site on http works.
+func TestSiteURL(t *testing.T) {
+	tests := map[string]string{
+		"example.atlassian.net":          "https://example.atlassian.net",
+		" example.atlassian.net/ ":       "https://example.atlassian.net",
+		"https://example.atlassian.net/": "https://example.atlassian.net",
+		"http://localhost:8080":          "http://localhost:8080",
+	}
+	for in, want := range tests {
+		if got := SiteURL(in); got != want {
+			t.Errorf("SiteURL(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+// Get adds its parameters to a path, after any query the path already has (pagination links carry
+// one); Post sends its body as JSON and decodes the answer.
+func TestGetAndPost(t *testing.T) {
+	var gotURL, gotBody, gotType string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotURL = r.URL.RequestURI()
+		b, _ := io.ReadAll(r.Body)
+		gotBody, gotType = string(b), r.Header.Get("Content-Type")
+		w.Write([]byte(`{"ok":true}`))
+	}))
+	defer srv.Close()
+	c := NewClient(srv.URL, srv.URL, "e", "t")
+	ctx := context.Background()
+
+	for _, tt := range []struct {
+		name, path, want string
+		params           url.Values
+	}{
+		{"a bare path", "/rest/x", "/rest/x?limit=5", url.Values{"limit": {"5"}}},
+		{"a path with a query", "/rest/x?start=10", "/rest/x?start=10&limit=5", url.Values{"limit": {"5"}}},
+		{"no parameters", "/rest/x?start=10", "/rest/x?start=10", nil},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			var out struct{ OK bool }
+			if err := c.Get(ctx, tt.path, tt.params, &out); err != nil || !out.OK || gotURL != tt.want {
+				t.Errorf("Get(%q) requested %q (err %v, ok %v), want %q", tt.path, gotURL, err, out.OK, tt.want)
+			}
+		})
+	}
+
+	var out struct{ OK bool }
+	if err := c.Post(ctx, "/rest/search", map[string]any{"jql": "project = ENG"}, &out); err != nil || !out.OK {
+		t.Fatalf("Post = %v, ok %v", err, out.OK)
+	}
+	if gotBody != `{"jql":"project = ENG"}` || gotType != "application/json" {
+		t.Errorf("Post sent %q as %q, want the JSON body as application/json", gotBody, gotType)
+	}
+	if err := c.Post(ctx, "/rest/search", func() {}, nil); err == nil {
+		t.Error("Post accepted a body that is not JSON")
+	}
+}
+
+// A site refusing a token answers 401, 403 or 404 on probe paths that exist for every account;
+// anything else is not a refusal.
+func TestIsAuthError(t *testing.T) {
+	for _, tt := range []struct {
+		err  error
+		want bool
+	}{
+		{&StatusError{StatusCode: http.StatusUnauthorized}, true},
+		{&StatusError{StatusCode: http.StatusForbidden}, true},
+		{&StatusError{StatusCode: http.StatusNotFound}, true},
+		{&StatusError{StatusCode: http.StatusInternalServerError}, false},
+		{errors.New("connection reset"), false},
+		{nil, false},
+	} {
+		if got := isAuthError(tt.err); got != tt.want {
+			t.Errorf("isAuthError(%v) = %v, want %v", tt.err, got, tt.want)
+		}
+	}
+}
+
+// TimePtr normalises an optional timestamp, and an empty one is none.
+func TestTimePtr(t *testing.T) {
+	in, empty := "2024-01-02T10:11:12+01:00", ""
+	if got := TimePtr(&in); got == nil || *got != "2024-01-02T09:11:12+00:00" {
+		t.Errorf("TimePtr(%q) = %v", in, got)
+	}
+	if TimePtr(nil) != nil || TimePtr(&empty) != nil {
+		t.Error("TimePtr of nil or empty should be nil")
+	}
+	if got := Timestamp("2024-01-02T09:11:12+00:00").String(); got != "2024-01-02T09:11:12+00:00" {
+		t.Errorf("Timestamp.String() = %q", got)
+	}
+}
+
+// truncate cuts at a byte count, backing up to the start of a character.
+func TestTruncate(t *testing.T) {
+	tests := []struct {
+		s    string
+		n    int
+		want string
+	}{
+		{"short", 10, "short"},
+		{"exact", 5, "exact"},
+		{"abcdef", 3, "abc"},
+		{"éé", 1, ""},
+		{"éé", 3, "é"},
+	}
+	for _, tt := range tests {
+		if got := truncate(tt.s, tt.n); got != tt.want {
+			t.Errorf("truncate(%q, %d) = %q, want %q", tt.s, tt.n, got, tt.want)
+		}
 	}
 }
