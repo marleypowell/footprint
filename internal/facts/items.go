@@ -2,7 +2,7 @@ package facts
 
 import (
 	"cmp"
-	"net/url"
+	"fmt"
 	"slices"
 	"strings"
 	"time"
@@ -96,7 +96,7 @@ func itemPath(id string) string {
 		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9', r == '.', r == '_', r == '-', r == '+':
 			b.WriteByte(r)
 		default:
-			b.WriteString(url.PathEscape(string(r)))
+			fmt.Fprintf(&b, "%%%02X", r)
 		}
 	}
 	return b.String()

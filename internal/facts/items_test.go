@@ -33,6 +33,8 @@ func TestItemPath(t *testing.T) {
 	for id, want := range map[string]string{
 		"ENG-1": "ENG-1", "repo+app_2.x+2024q1": "repo+app_2.x+2024q1", "doc+12345": "doc+12345",
 		"adr+web+apps/a/0001-x": "adr+web+apps%2Fa%2F0001-x", "a b": "a%20b", "x#1": "x%231", "50%": "50%25", "why?": "why%3F",
+		// characters a URL path keeps but a file name may not (':' on Windows), and UTF-8 byte by byte
+		"a:b": "a%3Ab", "a@b&c=d$e~f": "a%40b%26c%3Dd%24e%7Ef", "café": "caf%C3%A9",
 	} {
 		if got := itemPath(id); got != want {
 			t.Errorf("itemPath(%q) = %q, want %q", id, got, want)
